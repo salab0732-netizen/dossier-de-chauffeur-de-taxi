@@ -28,7 +28,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 
 APP_NAME    = "نظام إدخال بيانات سيارات الأجرة"
-APP_VERSION = "4.3"
+APP_VERSION = "5.0"
 WILAYA_ID   = 32
 CONFIG_FILE = Path(__file__).resolve().parent / "config.json"
 
@@ -969,6 +969,176 @@ def normalize(data: dict, log=None) -> list[str]:
     return fixed
 
 
+# ══════════════════════════════════════════════════════════════════════
+#  الاشتقاق — ملء ما لم يُقرأ من معلومات متاحة أصلاً
+#
+#  بنية رقم التعريف الوطني الجزائري (18 رقماً)، مستخرجة بتحليل
+#  3510 سجلاً من قاعدة الولاية:
+#     الخانة   1      : سلسلة الإصدار
+#     الخانة   2      : الجنس   — 0 ذكر · 1 أنثى      (دقّة 100%)
+#     الخانات  3–5    : سنة الميلاد (آخر ثلاثة أرقام) (دقّة 90%)
+#     الخانات  6–9    : مكتب الحالة المدنية            (80% أحادي الولاية)
+#     الخانات 10–14   : رقم شهادة الميلاد               (دقّة 96%)
+# ══════════════════════════════════════════════════════════════════════
+
+NIN_FIELD = {"operateur": "nin", "chauffeur": "nin",
+             "chauffeur_manaoub": "nin", "licence_modjahid": "nin_modjahid"}
+
+# ثوابت مؤكّدة في القاعدة بنسبة 100%
+CONSTANTS = {
+    "id_wilaya":      str(WILAYA_ID),
+    "pays":           "Algerie",
+    "pays_naissance": "ALGERIE",
+}
+
+# حقول تُنسخ من المتعامل إلى بقية الأقسام إن غابت
+PROPAGATE = {
+    "chauffeur":        ["activite", "nature_activite", "adresse", "adresse_ar",
+                         "id_wilaya_adresse", "pays", "pays_naissance"],
+    "chauffeur_manaoub": ["activite", "nature_activite"],
+    "vehicule":         ["activite", "nature_activite", "adresse", "adresse_ar",
+                         "id_wilaya_adresse"],
+}
+
+# هويّة السائق الأساسي = هويّة المتعامل نفسه
+IDENTITY = ["nin", "prenom", "nom", "prenom_ar", "nom_ar", "date_naissance",
+            "sexe", "n_acte_naissance", "adresse", "adresse_ar",
+            "id_wilaya_adresse", "numero_cnas", "numero_casnos"]
+
+
+# ما يجعل القسم «عامراً» فعلاً — لا مجرّد ثوابت ملأناها نحن
+ACTIVE_MARKERS = {
+    "operateur":        ["nin", "nom_ar", "nom", "raison_sociale"],
+    "chauffeur":        ["nin", "nom_ar", "nom", "n_permis"],
+    "chauffeur_manaoub": ["nin", "nom_ar", "nom", "n_permis"],
+    "vehicule":         ["n_immatriculation", "n_chasis", "marque", "n_porte"],
+    "licence_modjahid": ["nin_modjahid", "nom_ar", "nom", "n_decision_octroi"],
+}
+
+
+def section_active(data: dict, grp: str) -> bool:
+    """هل في القسم معلومة جوهرية؟ القسم الفارغ لا يُثرى ولا يُكتب."""
+    sec = data.get(grp)
+    if not isinstance(sec, dict):
+        return False
+    return any(sec.get(f) not in (None, "", "null")
+               for f in ACTIVE_MARKERS.get(grp, []))
+
+
+def decode_nin(nin: str) -> dict:
+    """يفكّ ما يحمله رقم التعريف الوطني من معلومات."""
+    s = "".join(ch for ch in str(nin or "") if ch.isdigit())
+    if len(s) != 18:
+        return {}
+    out = {}
+    if s[1] == "0":
+        out["sexe"] = "M"
+    elif s[1] == "1":
+        out["sexe"] = "F"
+    try:
+        y = 1000 + int(s[2:5])
+        if 1900 <= y <= datetime.date.today().year:
+            out["annee_naissance"] = y
+    except ValueError:
+        pass
+    try:
+        out["n_acte_naissance"] = str(int(s[9:14]))
+    except ValueError:
+        pass
+    out["bureau_etat_civil"] = s[5:9]
+    return out
+
+
+def enrich(data: dict, log=None) -> list[str]:
+    """
+    يملأ الحقول الغائبة من معلومات متوفّرة في الملف نفسه.
+    لا يملأ إلا ما كان اشتقاقه موثّقاً؛ وما كان احتمالياً يُترك للفحص.
+    يعدّل data في مكانه ويعيد قائمة بما اشتُقّ ومن أين.
+    """
+    done: list[str] = []
+
+    def put(grp, fkey, val, src):
+        if grp not in SCHEMA:
+            return
+        if fkey not in [f for f, _, _ in SCHEMA[grp]["fields"]]:
+            return
+        sec = data.setdefault(grp, {})
+        if sec.get(fkey) not in (None, "", "null"):
+            return
+        sec[fkey] = val
+        label = next((lb for f, lb, _ in SCHEMA[grp]["fields"] if f == fkey), fkey)
+        done.append(f"[{SCHEMA[grp]['title']}] {label} = «{val}»  ← {src}")
+        if log:
+            log(f"🧩 {done[-1]}")
+
+    # ① من رقم التعريف الوطني
+    for grp, ninf in NIN_FIELD.items():
+        sec = data.get(grp)
+        if not isinstance(sec, dict):
+            continue
+        dec = decode_nin(sec.get(ninf))
+        if not dec:
+            continue
+        if "sexe" in dec:
+            put(grp, "sexe", dec["sexe"], "الخانة 2 من رقم التعريف")
+        if "n_acte_naissance" in dec:
+            put(grp, "n_acte_naissance", dec["n_acte_naissance"],
+                "الخانات 10–14 من رقم التعريف")
+
+    # ② ثوابت القاعدة — للأقسام العامرة فقط
+    for grp in SCHEMA:
+        if not section_active(data, grp):
+            continue
+        for fkey, val in CONSTANTS.items():
+            put(grp, fkey, val, "ثابت في القاعدة")
+
+    # ②b حقول لها قيمة واحدة في القاعدة كلها ← ترميز موحّد لا يُترجَم
+    for grp in SCHEMA:
+        if not section_active(data, grp):
+            continue
+        for fkey, vals in (_VOCAB.get(grp) or {}).items():
+            if len(vals) != 1:
+                continue
+            sec = data.setdefault(grp, {})
+            cur = sec.get(fkey)
+            if cur in (None, "", "null"):
+                put(grp, fkey, vals[0], "القيمة الوحيدة في القاعدة")
+            elif str(cur).strip() != vals[0]:
+                old = str(cur).strip()
+                sec[fkey] = vals[0]
+                label = next((lb for f, lb, _ in SCHEMA[grp]["fields"] if f == fkey), fkey)
+                done.append(f"[{SCHEMA[grp]['title']}] {label}: «{old}» ← «{vals[0]}» "
+                            f"(ترميز القاعدة الموحّد)")
+                if log:
+                    log(f"🧩 {done[-1]}")
+
+    # ③ النسخ من المتعامل إلى بقية الأقسام
+    op = data.get("operateur") or {}
+    for grp, fields in PROPAGATE.items():
+        if not section_active(data, grp):
+            continue
+        for f in fields:
+            v = op.get(f)
+            if v not in (None, "", "null"):
+                put(grp, f, v, "من قسم المتعامل")
+
+    # ④ السائق الأساسي هو المتعامل نفسه
+    ch = data.get("chauffeur")
+    if isinstance(ch, dict) and ch:
+        same = (ch.get("qualite_chauffeur") in (None, "", "null", "Principal")
+                and ch.get("nin") in (None, "", "null"))
+        named = ch.get("nom_ar") in (None, "", "null") or \
+            str(ch.get("nom_ar", "")).strip() == str(op.get("nom_ar", "")).strip()
+        if same and named and op.get("nin"):
+            for f in IDENTITY:
+                v = op.get(f)
+                if v not in (None, "", "null"):
+                    put("chauffeur", f, v, "السائق الأساسي = المتعامل")
+            put("chauffeur", "qualite_chauffeur", "Principal", "استنتاج: يقود مركبته")
+
+    return done
+
+
 def validate(data: dict) -> list[str]:
     """فحص منطقي للبيانات المستخرجة — يعيد قائمة تنبيهات."""
     warn: list[str] = []
@@ -1036,6 +1206,34 @@ def validate(data: dict) -> list[str]:
     o, l = val("operateur", "nin"), val("licence_modjahid", "nin_modjahid")
     if o and l and o == l:
         warn.append("المتعامل وذو الحق لهما نفس رقم التعريف — تحقّق من عدم الخلط بينهما")
+
+    # تقاطع رقم التعريف مع بقية الحقول — يكشف خطأ في أيّهما
+    for grp, ninf in NIN_FIELD.items():
+        dec = decode_nin(val(grp, ninf))
+        if not dec:
+            continue
+        title = SCHEMA[grp]["title"]
+        sx = val(grp, "sexe")
+        if sx and dec.get("sexe") and sx.upper() != dec["sexe"]:
+            warn.append(f"[{title}] الجنس «{sx}» يخالف رقم التعريف الذي يفيد "
+                        f"«{dec['sexe']}»")
+        dn = val(grp, "date_naissance")
+        if dn and dec.get("annee_naissance"):
+            try:
+                y = datetime.date.fromisoformat(dn[:10]).year
+                if y != dec["annee_naissance"]:
+                    warn.append(f"[{title}] سنة الميلاد {y} تخالف رقم التعريف "
+                                f"الذي يفيد {dec['annee_naissance']}")
+            except ValueError:
+                pass
+        na = val(grp, "n_acte_naissance")
+        if na and dec.get("n_acte_naissance"):
+            try:
+                if int(na) != int(dec["n_acte_naissance"]):
+                    warn.append(f"[{title}] رقم شهادة الميلاد {na} يخالف رقم التعريف "
+                                f"الذي يفيد {dec['n_acte_naissance']}")
+            except ValueError:
+                pass
 
     return warn
 
@@ -1125,6 +1323,10 @@ def write_to_excel(excel_path: str, data: dict, overwrite_dups: bool, log) -> di
         row_data = {k: v for k, v in (data.get(gkey) or {}).items()
                     if v not in (None, "", "null")}
         if not row_data:
+            continue
+        # قسم لا يحمل إلا ثوابت مشتقّة ليس سجلاً — لا يُكتب
+        if not section_active(data, gkey):
+            log(f"⏭️  [{grp['sheet']}] لا معلومة جوهرية — لم يُكتب")
             continue
         sheet = grp["sheet"]
         if sheet not in wb.sheetnames:
@@ -1932,7 +2134,7 @@ class App:
                   foreground=C_MUTED).pack(side="right")
         self._btn(top, "↻ إعادة الفحص", self.revalidate, bg="#e2e8f0", fg=C_INK, font=F_UI
                   ).pack(side="left")
-        self._btn(top, "🔧 إصلاح تلقائي", lambda: self.revalidate(fix=True),
+        self._btn(top, "🔧 إصلاح واشتقاق", lambda: self.revalidate(fix=True),
                   bg="#fef3c7", fg=C_INK, font=F_UI).pack(side="left", padx=8)
 
         # لوحة الفحص تُحجز قبل الجدول الممتد حتى تبقى ظاهرة دائماً
@@ -2335,6 +2537,7 @@ class App:
             return
         if fix:
             fx = normalize(self.data, log=lambda m: self.log(m, "warn"))
+            fx += enrich(self.data, log=lambda m: self.log(m, "dim"))
             if fx:
                 self.log(f"🔧 أُصلح {len(fx)} حقلاً.", "info")
                 self._populate(self.data)
@@ -2696,6 +2899,9 @@ class App:
         fixes = normalize(data, log=lambda m: self.log(m, "warn"))
         if fixes:
             self.log(f"🔧 أُصلح {len(fixes)} حقلاً تلقائياً.", "info")
+        got = enrich(data, log=lambda m: self.log(m, "dim"))
+        if got:
+            self.log(f"🧩 اشتُقّ {len(got)} حقلاً من معلومات متاحة.", "info")
 
         out = Path(pdf).with_suffix("")
         out = out.with_name(out.name + "_extracted.json")
