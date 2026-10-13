@@ -28,7 +28,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 
 APP_NAME    = "نظام إدخال بيانات سيارات الأجرة"
-APP_VERSION = "5.0"
+APP_VERSION = "5.3"
 WILAYA_ID   = 32
 CONFIG_FILE = Path(__file__).resolve().parent / "config.json"
 
@@ -344,6 +344,9 @@ ENUM_FIELDS = {
     ("vehicule", "nature_activite"), ("vehicule", "activite"),
     ("vehicule", "energie"), ("vehicule", "genre"), ("vehicule", "carrossere"),
     ("licence_modjahid", "type_licence"),
+    ("operateur", "pays"), ("operateur", "pays_naissance"),
+    ("chauffeur", "pays"), ("chauffeur", "pays_naissance"),
+    ("chauffeur_manaoub", "pays"), ("chauffeur_manaoub", "pays_naissance"),
     ("vehicule", "marque"),
     ("chauffeur", "groupage"), ("chauffeur_manaoub", "groupage"),
     ("operateur", "sexe"), ("chauffeur", "sexe"),
@@ -463,6 +466,29 @@ def build_prompt() -> str:
         "   عنوانها الاجتماعي، اسم مسيّرها) واترك حقول الشخص الطبيعي فارغة،",
         "   واجعل طبيعة النشاط Societe Taxi.",
         "",
+        "═══ رقم التعريف الوطني — اقرأه بتأنٍّ شديد ═══",
+        "طوله **18 رقماً بالضبط**. عُدّ الأرقام قبل أن تكتبها، ثم عُدّها ثانية.",
+        "أكثر الأخطاء شيوعاً زيادة رقم أو نقصانه.",
+        "",
+        "بنيته تساعدك على التحقّق:",
+        "   الخانة  1      : رقم السلسلة (1 أو 2)",
+        "   الخانة  2      : الجنس — 0 للذكر · 1 للأنثى",
+        "   الخانات 3–5    : آخر ثلاثة أرقام من سنة الميلاد (979 لمواليد 1979)",
+        "   الخانات 6–9    : رمز مكتب الحالة المدنية",
+        "   الخانات 10–14  : رقم شهادة الميلاد مسبوقاً بأصفار",
+        "   الخانات 15–18  : رقم تسلسلي",
+        "",
+        "فإن كان المولود سنة 1979 ذكراً، فرقمه يبدأ حتماً بـ «10979».",
+        "قارن ما قرأته بتاريخ الميلاد المكتوب: إن لم يتطابقا فقد أخطأت القراءة.",
+        "",
+        "⚠️ في بطاقة التعريف رقمان مختلفان — لا تخلط بينهما:",
+        "   • رقم التعريف الوطني: 18 خانة، في وسط البطاقة بجانب عبارة",
+        "     «رقم التعريف الوطني». هذا هو المطلوب.",
+        "   • رقم البطاقة: 9 أو 10 خانات، مطبوع في أعلى البطاقة. غير مطلوب،",
+        "     ولا يوضع أبداً في خانة رقم شهادة الميلاد.",
+        "   رقم شهادة الميلاد لا يتجاوز 5 خانات، وتجده في شهادة الميلاد",
+        "   أو في الخانات 10–14 من رقم التعريف الوطني.",
+        "",
         "═══ أمانة النقل ═══",
         "• انسخ الأسماء **حرفياً** كما هي مكتوبة في الوثيقة — لا تُصحّح إملاءً ولا تُوحّد رسماً.",
         "• لا تخترع تاريخاً أبداً. إن ظهرت السنة فقط ولم يظهر اليوم أو الشهر،",
@@ -470,6 +496,9 @@ def build_prompt() -> str:
         "• انتبه: تاريخ إصدار البطاقة وتاريخ انتهائها ليسا تاريخ الميلاد.",
         "• في البطاقة الرمادية: «القوة» (PUISSANCE) و«عدد المقاعد» (PLACES ASSISES)",
         "  حقلان متجاوران ومختلفان — لا تخلط بينهما.",
+        "• الرقم التسلسلي للمركبة (n_chasis / VIN) خليطٌ من حروف وأرقام،",
+        "  طوله 8 أو 17 خانة غالباً. لا يكون أبداً 18 رقماً بحتاً.",
+        "  إن وجدت 18 رقماً بحتاً فذاك رقم تعريف وطني لا رقم تسلسلي.",
         "• رقم الباب (n_porte / n-porte) واحد في كل الأقسام — انسخه كما هو في كل قسم.",
         "",
         "الوثائق التي قد تجدها: رخصة الاستغلال المؤقتة · بطاقة التعريف الوطنية ·",
@@ -929,6 +958,29 @@ def normalize(data: dict, log=None) -> list[str]:
                     sec[fkey] = t
                     note(gkey, fkey, orig, t, "تصحيح قراءة ضوئية")
                     s = t
+                # محاولة إصلاح الطول باستعمال بقية الحقول كمرجع
+                if t.isdigit() and len(t) == 19:
+                    dn = sec.get("date_naissance")
+                    yr = None
+                    if dn:
+                        try:
+                            yr = datetime.date.fromisoformat(str(dn)[:10]).year
+                        except ValueError:
+                            pass
+                    ac = sec.get("n_acte_naissance")
+                    if ac is not None and not str(ac).strip().isdigit():
+                        ac = None
+                    rep, why = repair_nin(t, sec.get("sexe"), yr, ac)
+                    if rep:
+                        sec[fkey] = rep
+                        note(gkey, fkey, t, rep, why)
+                        s = rep
+
+            # ②a تاريخ من سنة فقط — معلومة ناقصة لا تاريخ
+            if "date" in fkey and s.isdigit() and len(s) == 4:
+                sec[fkey] = None
+                note(gkey, fkey, orig, "فارغ", "سنة بلا يوم ولا شهر")
+                continue
 
             # ② تواريخ مشوّهة: يوم أو شهر = 00 يعني أنه غير مقروء
             if "date" in fkey and len(s) >= 7:
@@ -1025,6 +1077,105 @@ def section_active(data: dict, grp: str) -> bool:
                for f in ACTIVE_MARKERS.get(grp, []))
 
 
+def decode_cnas(cnas: str) -> dict:
+    """
+    رقم الضمان الاجتماعي للأجراء يبدأ بسنة الميلاد (خانتان)
+    ثم رقم شهادة الميلاد (أربع خانات) — تحقّقٌ على 861 سجلاً بدقّة 90%.
+    """
+    d = "".join(ch for ch in str(cnas or "") if ch.isdigit())
+    if len(d) < 10:
+        return {}
+    out = {}
+    try:
+        yy = int(d[:2])
+        out["annee_naissance"] = 1900 + yy if yy > 10 else 2000 + yy
+        out["n_acte_naissance"] = str(int(d[2:6]))
+    except ValueError:
+        return {}
+    return out
+
+
+def gather_witnesses(sec: dict, ninf: str = "nin") -> dict:
+    """
+    يجمع شهادات مستقلّة على سنة الميلاد ورقم شهادة الميلاد:
+    الحقل المصرَّح · رقم التعريف الوطني · رقم CNAS.
+    يعيد لكل منهما: {"votes": {قيمة: [مصادر]}, "winner": قيمة أو None}
+    """
+    src: dict[str, dict] = {"annee_naissance": {}, "n_acte_naissance": {}}
+
+    def add(key, val, who):
+        if val in (None, ""):
+            return
+        try:
+            v = int(val)
+        except (TypeError, ValueError):
+            return
+        src[key].setdefault(v, []).append(who)
+
+    dn = sec.get("date_naissance")
+    if dn:
+        try:
+            add("annee_naissance",
+                datetime.date.fromisoformat(str(dn)[:10]).year, "الحقل المصرَّح")
+        except ValueError:
+            pass
+    add("n_acte_naissance", sec.get("n_acte_naissance"), "الحقل المصرَّح")
+
+    for who, dec in (("رقم التعريف الوطني", decode_nin(sec.get(ninf))),
+                     ("رقم CNAS", decode_cnas(sec.get("numero_cnas")))):
+        for k in ("annee_naissance", "n_acte_naissance"):
+            add(k, dec.get(k), who)
+
+    out = {}
+    for k, votes in src.items():
+        winner = None
+        if votes:
+            top = max(votes.items(), key=lambda kv: len(kv[1]))
+            if len(top[1]) >= 2:
+                winner = top[0]
+        out[k] = {"votes": votes, "winner": winner}
+    return out
+
+
+def repair_nin(nin: str, sexe=None, annee=None, acte=None) -> tuple[str | None, str]:
+    """
+    يحاول إصلاح رقم تعريف طوله 19 خانة بحذف خانة واحدة.
+    لا يقبل إلا مرشّحاً وحيداً يجتاز كل الفحوص المتاحة.
+    يعيد (الرقم المُصلَح أو None، سبب القرار).
+    """
+    s = "".join(ch for ch in str(nin or "") if ch.isdigit())
+    if len(s) == 18:
+        return s, "سليم"
+    if len(s) != 19:
+        return None, f"الطول {len(s)} — لا تُصلَح إلا الأرقام ذات 19 خانة"
+
+    def ok(c: str) -> bool:
+        d = decode_nin(c)
+        if not d:
+            return False
+        if d.get("sexe") is None:           # الخانة 2 ليست 0 ولا 1
+            return False
+        if sexe and d["sexe"] != str(sexe).strip().upper():
+            return False
+        if annee and d.get("annee_naissance") != annee:
+            return False
+        if acte is not None:
+            try:
+                if int(d.get("n_acte_naissance", -1)) != int(acte):
+                    return False
+            except (TypeError, ValueError):
+                pass
+        return True
+
+    cands = {s[:i] + s[i + 1:] for i in range(19)}
+    good = sorted(c for c in cands if ok(c))
+    if len(good) == 1:
+        return good[0], "مرشّح وحيد يجتاز بنية الرقم"
+    if not good:
+        return None, "لا مرشّح يطابق بنية الرقم — يحتاج مراجعة الوثيقة"
+    return None, f"{len(good)} مرشّحات محتملة — لا يُحسم آلياً"
+
+
 def decode_nin(nin: str) -> dict:
     """يفكّ ما يحمله رقم التعريف الوطني من معلومات."""
     s = "".join(ch for ch in str(nin or "") if ch.isdigit())
@@ -1081,7 +1232,13 @@ def enrich(data: dict, log=None) -> list[str]:
             continue
         if "sexe" in dec:
             put(grp, "sexe", dec["sexe"], "الخانة 2 من رقم التعريف")
-        if "n_acte_naissance" in dec:
+        w = gather_witnesses(sec, ninf)
+        aw = w["n_acte_naissance"]
+        if aw["winner"] is not None:
+            who = " و".join(aw["votes"][aw["winner"]])
+            put(grp, "n_acte_naissance", str(aw["winner"]),
+                f"إجماع {len(aw['votes'][aw['winner']])} مصادر: {who}")
+        elif "n_acte_naissance" in dec:
             put(grp, "n_acte_naissance", dec["n_acte_naissance"],
                 "الخانات 10–14 من رقم التعريف")
 
@@ -1207,6 +1364,31 @@ def validate(data: dict) -> list[str]:
     if o and l and o == l:
         warn.append("المتعامل وذو الحق لهما نفس رقم التعريف — تحقّق من عدم الخلط بينهما")
 
+    # الرقم التسلسلي للمركبة لا يكون 18 رقماً بحتاً — تلك بصمة رقم تعريف وطني
+    vin = val("vehicule", "n_chasis")
+    if vin and vin.isdigit() and len(vin) == 18:
+        d = decode_nin(vin)
+        extra = ""
+        if d.get("sexe"):
+            extra = (f" (بنيته سليمة: {d['sexe']}، مواليد "
+                     f"{d.get('annee_naissance','؟')}، شهادة {d.get('n_acte_naissance','؟')})")
+        warn.append(f"[المركبة] الرقم التسلسلي «{vin}» من 18 رقماً بحتاً — "
+                    f"هذه بنية رقم تعريف وطني لا رقم تسلسلي{extra}")
+
+    # رقم شهادة ميلاد غير معقول (القاعدة: 5 خانات كحدّ أقصى)
+    for grp in SCHEMA:
+        v = val(grp, "n_acte_naissance")
+        if v and v.isdigit() and len(v) > 5:
+            warn.append(f"[{SCHEMA[grp]['title']}] رقم شهادة الميلاد «{v}» من "
+                        f"{len(v)} خانة — القاعدة لا تتجاوز 5")
+
+    # المتعامل وذو الحق بنفس الاسم — قد يكون خلطاً
+    on, op_ = val("operateur", "nom_ar"), val("operateur", "prenom_ar")
+    ln, lp = val("licence_modjahid", "nom_ar"), val("licence_modjahid", "prenom_ar")
+    if on and ln and on == ln and op_ and lp and op_ == lp:
+        warn.append("المتعامل وذو الحق بنفس الاسم واللقب — تحقّق: هل هو "
+                    "Bénéféciaire يقود رخصته، أم خلطٌ بين شخصين؟")
+
     # تقاطع رقم التعريف مع بقية الحقول — يكشف خطأ في أيّهما
     for grp, ninf in NIN_FIELD.items():
         dec = decode_nin(val(grp, ninf))
@@ -1218,22 +1400,59 @@ def validate(data: dict) -> list[str]:
             warn.append(f"[{title}] الجنس «{sx}» يخالف رقم التعريف الذي يفيد "
                         f"«{dec['sexe']}»")
         dn = val(grp, "date_naissance")
+        _year_only = False
         if dn and dec.get("annee_naissance"):
             try:
                 y = datetime.date.fromisoformat(dn[:10]).year
-                if y != dec["annee_naissance"]:
-                    warn.append(f"[{title}] سنة الميلاد {y} تخالف رقم التعريف "
-                                f"الذي يفيد {dec['annee_naissance']}")
+                _year_only = y != dec["annee_naissance"]
             except ValueError:
                 pass
+        # تصويت الشهود الثلاثة
+        wit = gather_witnesses(data.get(grp) or {}, ninf)
+        for key, lbl in (("annee_naissance", "سنة الميلاد"),
+                         ("n_acte_naissance", "رقم شهادة الميلاد")):
+            votes = wit[key]["votes"]
+            win = wit[key]["winner"]
+            if win is not None and len(votes) > 1:
+                odd = [(v, src) for v, src in votes.items() if v != win]
+                for v, src in odd:
+                    warn.append(f"[{title}] {lbl}: {' و'.join(src)} يقول {v} "
+                                f"بينما {' و'.join(votes[win])} يقولان {win} "
+                                f"— الأرجح {win}")
+            elif win is None and len(votes) > 1:
+                detail = " · ".join(f"{v} ({' و'.join(src)})" for v, src in votes.items())
+                warn.append(f"[{title}] {lbl}: مصادر متضاربة بلا أغلبية — {detail}")
+
         na = val(grp, "n_acte_naissance")
+        bad_acte = bad_year = False
         if na and dec.get("n_acte_naissance"):
             try:
-                if int(na) != int(dec["n_acte_naissance"]):
-                    warn.append(f"[{title}] رقم شهادة الميلاد {na} يخالف رقم التعريف "
-                                f"الذي يفيد {dec['n_acte_naissance']}")
+                bad_acte = int(na) != int(dec["n_acte_naissance"])
             except ValueError:
                 pass
+        if dn and dec.get("annee_naissance"):
+            try:
+                bad_year = (datetime.date.fromisoformat(dn[:10]).year
+                            != dec["annee_naissance"])
+            except ValueError:
+                pass
+        # تناقضان معاً ← الرقم الوطني نفسه مقروء خطأً؛ نرشد إلى صورته الصحيحة
+        if bad_acte and bad_year:
+            nn = "".join(c for c in val(grp, ninf) if c.isdigit())
+            try:
+                y3 = f"{datetime.date.fromisoformat(dn[:10]).year % 1000:03d}"
+                a5 = f"{int(na):05d}"
+                _sx = (val(grp, "sexe") or "").upper()
+                sx = "1" if _sx == "F" else ("0" if _sx == "M"
+                                             else (nn[1] if len(nn) > 1 else "X"))
+                warn.append(
+                    f"[{title}] رقم التعريف «{nn}» يخالف الوثيقة في السنة والشهادة معاً "
+                    f"— أعد قراءته: ينبغي أن يكون على صورة "
+                    f"{nn[0] if nn else 'X'}{sx}{y3}·{nn[5:9] if len(nn) >= 9 else 'XXXX'}"
+                    f"·{a5}·XXXX")
+            except (ValueError, TypeError):
+                warn.append(f"[{title}] رقم التعريف يخالف الوثيقة في السنة والشهادة معاً")
+
 
     return warn
 
