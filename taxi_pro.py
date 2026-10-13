@@ -28,7 +28,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 
 APP_NAME    = "نظام إدخال بيانات سيارات الأجرة"
-APP_VERSION = "5.5"
+APP_VERSION = "6.1"
 WILAYA_ID   = 32
 CONFIG_FILE = Path(__file__).resolve().parent / "config.json"
 
@@ -518,6 +518,77 @@ def build_prompt() -> str:
     return "\n".join(lines)
 
 
+IDENTITY_PROMPT = """هذه صفحات من ملف سائق سيارة أجرة، أُرسلت بأوضاع متعدّدة
+لأن أصلها مائل. كل صورتين متتاليتين قد تكونان الصفحة نفسها بوضعين متقابلين —
+اقرأ من المعتدل وتجاهل المقلوب، ولا تحسبهما وثيقتين.
+
+مهمّتك واحدة فقط: استخراج هويّات الأشخاص الواردين.
+
+لكل شخص تجد له بطاقة تعريف وطنية أو شهادة ميلاد، أعد سطراً.
+رقم التعريف الوطني 18 رقماً بالضبط — عُدّها مرّتين.
+بنيته: خانة سلسلة · خانة جنس (0 ذكر 1 أنثى) · 3 خانات لسنة الميلاد ·
+4 مكتب · 5 رقم شهادة الميلاد · 4 تسلسل.
+فمولود 1979 ذكراً يبدأ رقمه بـ «10979».
+
+أعد JSON فقط:
+{"اشخاص":[{"nom_ar":"اللقب","prenom_ar":"الاسم","nin":"18 رقماً",
+           "date_naissance":"YYYY-MM-DD","n_acte_naissance":"رقم الشهادة"}]}"""
+
+
+def second_look_identity(pdf_path: str, provider, log=None) -> list[dict]:
+    """
+    قراءة ثانية موجّهة: تُرسَل الصفحات المائلة بوضعَيها، ويُطلب من النموذج
+    الهويّات وحدها. تُستدعى فقط حين يشتكي الفحص من أرقام التعريف،
+    لأن تكرار الصفحات في المسار العادي يُربك النموذج في نسبة كل رقم لصاحبه.
+    """
+    imgs = pdf_to_jpegs(pdf_path, upright=True)
+    if log:
+        log(f"🔍 نظرة ثانية على الهويّات — {len(imgs)} صورة بأوضاع متعدّدة")
+    raw = provider.extract(imgs, IDENTITY_PROMPT)
+    try:
+        data = raw if isinstance(raw, dict) else parse_json_response(raw)
+    except Exception:
+        return []
+    out = data.get("اشخاص") or data.get("persons") or []
+    return [p for p in out if isinstance(p, dict)]
+
+
+def merge_identity(data: dict, people: list[dict], log=None) -> list[str]:
+    """
+    يدمج هويّات النظرة الثانية في الأقسام التي يشكو رقمها من عطب،
+    بمطابقة اللقب والاسم. لا يستبدل إلا ما كان المرشّح الجديد أفضل مطابقةً.
+    """
+    done: list[str] = []
+
+    def norm(x):
+        return "".join(str(x or "").split()).lower()
+
+    for grp, ninf in NIN_FIELD.items():
+        sec = data.get(grp)
+        if not isinstance(sec, dict) or not section_active(data, grp):
+            continue
+        cur = "".join(c for c in str(sec.get(ninf) or "") if c.isdigit())
+        if len(cur) == 18 and nin_fit(cur, sec) >= 2:
+            continue                      # الرقم الحالي متّسق — لا نعبث به
+        for p in people:
+            if norm(p.get("nom_ar")) != norm(sec.get("nom_ar")):
+                continue
+            if sec.get("prenom_ar") and p.get("prenom_ar") and \
+               norm(p["prenom_ar"]) != norm(sec["prenom_ar"]):
+                continue
+            new = "".join(c for c in str(p.get("nin") or "") if c.isdigit())
+            if len(new) != 18 or new == cur:
+                continue
+            if nin_fit(new, sec) > nin_fit(cur, sec):
+                sec[ninf] = new
+                done.append(f"[{SCHEMA[grp]['title']}] رقم التعريف: «{cur or 'فارغ'}» "
+                            f"← «{new}» (نظرة ثانية بوضع معتدل)")
+                if log:
+                    log(f"🔍 {done[-1]}")
+            break
+    return done
+
+
 def build_response_schema(flavor: str = "gemini") -> dict:
     """
     مخطط مُلزِم يضمن بنية صالحة دائماً.
@@ -571,8 +642,17 @@ def save_config(cfg: dict) -> bool:
 #  معالجة PDF
 # ══════════════════════════════════════════════════════════════════════
 
-def pdf_to_jpegs(pdf_path: str, zoom: float = 2.0, progress=None) -> list[bytes]:
-    """تحويل كل صفحة PDF إلى صورة JPEG."""
+def pdf_to_jpegs(pdf_path: str, zoom: float = 2.0, progress=None,
+                 upright: bool = False) -> list[bytes]:
+    """
+    تحويل صفحات PDF إلى صور JPEG.
+
+    الصفحات الأفقية غالباً بطاقاتٌ مُسحت ضوئياً وهي مائلة، وقراءتها
+    مائلةً تُفسد الأرقام الطويلة. فتُرسَل بوضعَيها المحتملَين (90° يميناً
+    و90° يساراً) ليقرأ النموذج من المعتدل منهما.
+    تحقّقٌ عملي: رقم تعريف أخطأ فيه النموذج مراراً وهو مائل، أصابه
+    حرفاً بحرف حين أُرسل معتدلاً. والأفقية 15% من الصفحات فقط.
+    """
     try:
         import pymupdf as fitz           # الاسم الحديث
     except ImportError:
@@ -582,8 +662,15 @@ def pdf_to_jpegs(pdf_path: str, zoom: float = 2.0, progress=None) -> list[bytes]
     total = len(doc)
     try:
         for i, page in enumerate(doc):
-            pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
-            out.append(pix.tobytes("jpeg"))
+            base = fitz.Matrix(zoom, zoom)
+            landscape = page.rect.width > page.rect.height
+            if upright and landscape:
+                for ang in (90, -90):
+                    out.append(page.get_pixmap(
+                        matrix=base * fitz.Matrix(1, 1).prerotate(ang)
+                    ).tobytes("jpeg"))
+            else:
+                out.append(page.get_pixmap(matrix=base).tobytes("jpeg"))
             if progress:
                 progress(i + 1, total)
     finally:
@@ -3194,6 +3281,25 @@ class App:
         got = enrich(data, log=lambda m: self.log(m, "dim"))
         if got:
             self.log(f"🧩 اشتُقّ {len(got)} حقلاً من معلومات متاحة.", "info")
+
+        # نظرة ثانية موجّهة: فقط إن شكا الفحص من أرقام التعريف
+        if any(("رقم التعريف" in w) or ("NIN" in w) for w in validate(data)):
+            self.log("⚠️ أرقام التعريف مشكوك فيها — نظرة ثانية بوضع معتدل.", "warn")
+            try:
+                people = second_look_identity(pdf, prov,
+                                              log=lambda m: self.log(m, "dim"))
+                merged = merge_identity(data, people,
+                                        log=lambda m: self.log(m, "ok"))
+                if merged:
+                    self.log(f"🔍 صُحّح {len(merged)} رقم تعريف.", "ok")
+                    normalize(data)
+                    enrich(data)
+                else:
+                    self.log("🔍 النظرة الثانية لم تجد أفضل ممّا لدينا.", "dim")
+            except Cancelled:
+                raise
+            except Exception as e:
+                self.log(f"🔍 تعذّرت النظرة الثانية: {e}", "warn")
 
         out = Path(pdf).with_suffix("")
         out = out.with_name(out.name + "_extracted.json")
