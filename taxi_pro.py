@@ -28,7 +28,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 
 APP_NAME    = "نظام إدخال بيانات سيارات الأجرة"
-APP_VERSION = "5.3"
+APP_VERSION = "5.5"
 WILAYA_ID   = 32
 CONFIG_FILE = Path(__file__).resolve().parent / "config.json"
 
@@ -1095,6 +1095,54 @@ def decode_cnas(cnas: str) -> dict:
     return out
 
 
+def nin_fit(nin: str, sec: dict) -> int:
+    """كم من خصائص الشخص يوافقها هذا الرقم؟ (الجنس · السنة · رقم الشهادة)"""
+    d = decode_nin(nin)
+    if not d:
+        return -1
+    score = 0
+    sx = str(sec.get("sexe") or "").upper()
+    if sx and d.get("sexe") == sx:
+        score += 1
+    dn = sec.get("date_naissance")
+    if dn and d.get("annee_naissance"):
+        try:
+            if datetime.date.fromisoformat(str(dn)[:10]).year == d["annee_naissance"]:
+                score += 1
+        except ValueError:
+            pass
+    ac = sec.get("n_acte_naissance")
+    if ac and d.get("n_acte_naissance"):
+        try:
+            if int(ac) == int(d["n_acte_naissance"]):
+                score += 1
+        except (TypeError, ValueError):
+            pass
+    return score
+
+
+def detect_swapped_nin(data: dict) -> list[tuple[str, str]]:
+    """
+    يكشف رقمَي تعريف وُضع كلٌّ منهما في قسم الآخر.
+    لا يُبلّغ إلا إذا كان التبادل يُحسّن المطابقة فعلاً.
+    """
+    out = []
+    keys = [(g, f) for g, f in NIN_FIELD.items()
+            if isinstance(data.get(g), dict)
+            and str((data[g] or {}).get(f) or "").strip()]
+    for i in range(len(keys)):
+        for j in range(i + 1, len(keys)):
+            (ga, fa), (gb, fb) = keys[i], keys[j]
+            na, nb = str(data[ga][fa]).strip(), str(data[gb][fb]).strip()
+            if na == nb:
+                continue
+            now = nin_fit(na, data[ga]) + nin_fit(nb, data[gb])
+            swap = nin_fit(nb, data[ga]) + nin_fit(na, data[gb])
+            if swap > now and swap >= 2:
+                out.append((ga, gb))
+    return out
+
+
 def gather_witnesses(sec: dict, ninf: str = "nin") -> dict:
     """
     يجمع شهادات مستقلّة على سنة الميلاد ورقم شهادة الميلاد:
@@ -1388,6 +1436,31 @@ def validate(data: dict) -> list[str]:
     if on and ln and on == ln and op_ and lp and op_ == lp:
         warn.append("المتعامل وذو الحق بنفس الاسم واللقب — تحقّق: هل هو "
                     "Bénéféciaire يقود رخصته، أم خلطٌ بين شخصين؟")
+
+    # رقما تعريف متبادلان بين قسمين
+    for ga, gb in detect_swapped_nin(data):
+        warn.append(f"🔄 رقما التعريف في «{SCHEMA[ga]['title']}» و«{SCHEMA[gb]['title']}» "
+                    f"يبدوان متبادلين — كلٌّ منهما يطابق بيانات الآخر. "
+                    f"تحقّق قبل أي تصحيح آخر.")
+
+    # الخانة الثانية من رقم التعريف لا تكون إلا 0 أو 1 — تحقّق قاطع
+    for grp, ninf in NIN_FIELD.items():
+        nn = "".join(c for c in (val(grp, ninf) or "") if c.isdigit())
+        if len(nn) == 18 and nn[1] not in "01":
+            title = SCHEMA[grp]["title"]
+            sx = (val(grp, "sexe") or "").upper()
+            dn = val(grp, "date_naissance")
+            na = val(grp, "n_acte_naissance")
+            shape = ""
+            try:
+                y3 = f"{datetime.date.fromisoformat(dn[:10]).year % 1000:03d}" if dn else "XXX"
+                a5 = f"{int(na):05d}" if na and na.isdigit() else "XXXXX"
+                d2 = "1" if sx == "F" else ("0" if sx == "M" else "X")
+                shape = f" — ينبغي أن يكون على صورة {nn[0]}{d2}{y3}·XXXX·{a5}·XXXX"
+            except (ValueError, TypeError):
+                pass
+            warn.append(f"[{title}] رقم التعريف «{nn}» معطوب: خانته الثانية «{nn[1]}» "
+                        f"ولا تكون إلا 0 (ذكر) أو 1 (أنثى){shape}")
 
     # تقاطع رقم التعريف مع بقية الحقول — يكشف خطأ في أيّهما
     for grp, ninf in NIN_FIELD.items():
