@@ -77,8 +77,14 @@ class State:
             if q in self._subs:
                 self._subs.remove(q)
 
-    def emit(self, kind: str, **payload):
-        msg = json.dumps({"type": kind, **payload}, ensure_ascii=False)
+    def emit(self, event: str, /, **payload):
+        """يبثّ حدثاً إلى كل واجهة مفتوحة.
+
+        `event` موضعيٌّ بحتاً (/) لأن الحمولة قد تحمل مفتاحاً بالاسم
+        نفسه: `log` يبثّ حمولةً فيها `kind`، فلو كان اسم المعامل
+        `kind` لتصادما وانهار كل استدعاء للسجلّ.
+        """
+        msg = json.dumps({"type": event, **payload}, ensure_ascii=False)
         with self._lock:
             subs = list(self._subs)
         for q in subs:
