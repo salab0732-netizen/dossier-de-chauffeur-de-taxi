@@ -213,7 +213,7 @@ class State:
         name = self.cfg.get("provider", "Gemini")
         cls = PROVIDERS.get(name)
         if not cls:
-            # إعدادٌ يُسمّي مزوّداً لم يعد موجوداً (Offline حُذف) — يُنقَل
+            # إعدادٌ يُسمّي مزوّداً لم يعد موجوداً — يُنقَل
             # إلى أوّل مزوّدٍ مفتاحُه محفوظ، فلا يُطالَب الموظّف بمفتاح
             # يملك غيره، ولا يقف البرنامج على إعدادٍ قديم.
             name = next((n for n in PROVIDERS if self._key_of(n)), "Gemini")

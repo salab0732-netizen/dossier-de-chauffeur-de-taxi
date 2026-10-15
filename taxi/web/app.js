@@ -555,7 +555,6 @@ const KEY_HINT = {
   'Gemini':    'طبقة مجانية سخيّة · aistudio.google.com/apikey',
   'Claude':    'مدفوع بالرصيد · console.anthropic.com',
   'OCR.space': 'مجاني: 500 طلب يومياً، 1 م.ب للصفحة · ocr.space/ocrapi/freekey',
-  'Offline':   'لا يحتاج مفتاحاً — Tesseract محلي بالكامل ✓',
 };
 
 function renderProviders() {
@@ -588,7 +587,6 @@ function renderProviders() {
 
 function fillSettings() {
   $('#cfgExcel').value = S.config.excel_path || '';
-  $('#cfgWatch').value = S.config.watch_dir || '';
   $('#cfgWs').value    = S.config.workspace_id || '';
   $('#cfgOverwrite').checked = !!S.config.overwrite;
   $('#cfgAutoSave').checked  = !!S.config.auto_save;
@@ -603,7 +601,6 @@ $('#btnSaveCfg').onclick = async () => {
     provider: cur,
     model: $('#cfgModel').value,
     excel_path: $('#cfgExcel').value.trim(),
-    watch_dir: $('#cfgWatch').value.trim(),
     workspace_id: $('#cfgWs').value.trim(),
     overwrite: $('#cfgOverwrite').checked,
     auto_save: $('#cfgAutoSave').checked,
@@ -669,7 +666,6 @@ function mkBrowse(icon, name, fn, isFile) {
 
 function pickFile(p) {
   if (S.browseFor === 'excel') $('#cfgExcel').value = p;
-  if (S.browseFor === 'watch') $('#cfgWatch').value = p;
   closeBrowse();
 }
 
@@ -681,7 +677,6 @@ const openBrowse = (what, start) => {
 const closeBrowse = () => { $('#browseModal').hidden = true; };
 
 $('#btnBrowseXl').onclick    = () => openBrowse('excel', $('#cfgExcel').value);
-$('#btnBrowseWatch').onclick = () => openBrowse('watch', $('#cfgWatch').value);
 $('#browseClose').onclick = closeBrowse;
 $('#browseCancel').onclick = closeBrowse;
 $('#browsePick').onclick = () => pickFile(S.browsePath);

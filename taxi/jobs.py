@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import datetime
 import threading
-import time
 from pathlib import Path
 
 
@@ -131,67 +130,3 @@ class JobQueue:
                 return False
         self._touch()
         return True
-
-
-# ══════════════════════════════════════════════════════════════════════
-#  مراقبة المجلّد
-# ══════════════════════════════════════════════════════════════════════
-
-class FolderWatcher:
-    """
-    يراقب مجلّداً ويضيف كل PDF جديد إلى الطابور.
-    يتجاهل الملفات التي ما زالت قيد النسخ (حجمها يتغيّر).
-    """
-
-    def __init__(self, folder, queue, log, interval=6):
-        self.folder = Path(folder)
-        self.queue = queue
-        self.log = log
-        self.interval = interval
-        self._stop = threading.Event()
-        self._thread = None
-        self._sizes: dict[str, int] = {}
-
-    @property
-    def running(self):
-        return self._thread is not None and self._thread.is_alive()
-
-    def start(self):
-        if self.running:
-            return
-        self.folder.mkdir(parents=True, exist_ok=True)
-        (self.folder / "تم_إدخالها").mkdir(exist_ok=True)
-        (self.folder / "تحتاج_مراجعة").mkdir(exist_ok=True)
-        self._stop.clear()
-        self._thread = threading.Thread(target=self._loop, daemon=True)
-        self._thread.start()
-        self.log(f"👁 المراقبة تعمل على: {self.folder}", "ok")
-
-    def stop(self):
-        self._stop.set()
-        self.log("⏸ أُوقفت مراقبة المجلّد.", "warn")
-
-    def scan_once(self) -> int:
-        """مسحة واحدة — تعيد عدد الملفات الجديدة."""
-        n = 0
-        try:
-            for p in sorted(self.folder.glob("*.pdf")):
-                if not p.is_file():
-                    continue
-                key = str(p.resolve()).lower()
-                size = p.stat().st_size
-                # ننتظر استقرار الحجم حتى لا نقرأ ملفاً قيد النسخ
-                if self._sizes.get(key) != size:
-                    self._sizes[key] = size
-                    continue
-                if self.queue.add(p, "folder"):
-                    n += 1
-                    self.log(f"📥 ملف جديد: {p.name}", "info")
-        except Exception as e:
-            self.log(f"⚠️ خطأ في المراقبة: {e}", "warn")
-        return n
-
-    def _loop(self):
-        while not self._stop.is_set():
-            self.scan_once()
-            self._stop.wait(self.interval)
