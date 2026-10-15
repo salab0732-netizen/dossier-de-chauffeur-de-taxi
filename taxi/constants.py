@@ -30,5 +30,4 @@ CLAUDE_MODELS = [
 ]
 
 
-OFFLINE_MODELS = ["tesseract-ara", "tesseract-ara+fra"]
 OCRSPACE_MODELS = ["engine-2", "engine-3"]

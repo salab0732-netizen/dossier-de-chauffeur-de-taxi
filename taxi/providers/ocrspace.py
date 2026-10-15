@@ -52,7 +52,7 @@ def _shrink_jpeg(data: bytes, limit: int) -> bytes:
 
 def _overlay_to_tsv(result: dict) -> str:
     """مواقع الكلمات من OCR.space (TextOverlay) ← صيغة TSV نفسها التي يُخرجها
-    Tesseract، لتعمل قراءة خانات البطاقة الرمادية بالمواقع مع المزوّدَين."""
+    Tesseract، لتعمل قراءة خانات البطاقة الرمادية بالمواقع."""
     rows = ["level\tpage_num\tblock_num\tpar_num\tline_num\tword_num"
             "\tleft\ttop\twidth\theight\tconf\ttext"]
     for pr in result.get("ParsedResults") or []:
@@ -73,7 +73,7 @@ def _overlay_to_tsv(result: dict) -> str:
 
 class OcrSpaceProvider:
     """OCR سحابي عبر ocr.space — يدعم العربية والفرنسية/الإنجليزية معاً
-    (language=auto)، ثم الاستخراج نفسه المستعمل مع Tesseract."""
+    (language=auto)، ثم استخراج الحقول من النصّ بالأنماط."""
     name = "OCR.space"
     on_debug = None
 

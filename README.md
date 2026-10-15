@@ -25,12 +25,14 @@ python run.py
 | `python run.py --browser` | يفتح في المتصفّح |
 | `python run.py --host 0.0.0.0` | يُتاح لأجهزة الشبكة المحلية |
 
-تحتاج مفتاح واجهة برمجية من أحد المزوّدين، أو لا تحتاج شيئاً مع `Offline`:
+تحتاج مفتاح واجهة برمجية من أحد المزوّدين:
 
 - **Google Gemini** — طبقة مجانية سخية · [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
 - **Anthropic Claude** — مدفوع بالرصيد · [console.anthropic.com](https://console.anthropic.com)
 - **OCR.space** — مجاني: 500 طلب يومياً · [ocr.space/ocrapi/freekey](https://ocr.space/ocrapi/freekey)
-- **Offline** — Tesseract محلي، بلا إنترنت ولا مفتاح
+
+النموذجان السحابيّان يقرآن الصورة مباشرةً فيتجاوزان تشويه المسح،
+وOCR.space يحوّلها نصّاً ثم تُستخرج الحقول بالأنماط.
 
 يُدخَل المفتاح من تبويب الإعدادات ويُحفظ في `config.json` بجانب البرنامج.
 
@@ -132,7 +134,6 @@ taxi/
 ├─ providers/
 │  ├─ base.py           الأخطاء وإعادة المحاولة
 │  ├─ gemini.py  claude.py
-│  ├─ offline.py        Tesseract محلي
 │  ├─ ocrspace.py       OCR.space
 │  ├─ regex_extract.py  استخراج الحقول من نص OCR
 │  └─ second_look.py    النظرة الثانية على الهويّات
@@ -168,4 +169,3 @@ Python 3.9 أو أحدث
 | `pywebview` | النافذة الأصيلة (اختياري — بدونها يُفتح المتصفّح) |
 | `google-genai` | مزوّد Gemini |
 | `anthropic` | مزوّد Claude |
-| Tesseract + `ara.traineddata` | مزوّد Offline |

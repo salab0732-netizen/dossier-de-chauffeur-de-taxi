@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 
 from taxi.config import load_config, save_config
 from taxi.constants import (APP_NAME, APP_VERSION, CLAUDE_MODELS, GEMINI_MODELS,
-                            OCRSPACE_MODELS, OFFLINE_MODELS, WILAYA_ID)
+                            OCRSPACE_MODELS, WILAYA_ID)
 from taxi.core.enrich import NIN_FIELD, enrich, section_active
 from taxi.core.normalize import normalize
 from taxi.core.schema import SCHEMA
@@ -42,7 +42,7 @@ UPLOADS = Path(tempfile.gettempdir()) / "taxi_uploads"
 UPLOADS.mkdir(parents=True, exist_ok=True)
 
 MODELS = {"Gemini": GEMINI_MODELS, "Claude": CLAUDE_MODELS,
-          "Offline": OFFLINE_MODELS, "OCR.space": OCRSPACE_MODELS}
+          "OCR.space": OCRSPACE_MODELS}
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -204,18 +204,31 @@ class State:
         return {"ok": True, **out}
 
     # ── المزوّد ──
+    def _key_of(self, name: str) -> str:
+        """مفتاح مزوّدٍ بعينه كما هو محفوظ في الإعدادات."""
+        return (self.cfg.get(f"{name.lower().replace('.', '')}_key")
+                or self.cfg.get(f"{name.lower()}_key") or "").strip()
+
     def provider(self):
         name = self.cfg.get("provider", "Gemini")
         cls = PROVIDERS.get(name)
         if not cls:
-            raise ProviderError(f"مزوّد غير معروف: {name}")
+            # إعدادٌ يُسمّي مزوّداً لم يعد موجوداً (Offline حُذف) — يُنقَل
+            # إلى أوّل مزوّدٍ مفتاحُه محفوظ، فلا يُطالَب الموظّف بمفتاح
+            # يملك غيره، ولا يقف البرنامج على إعدادٍ قديم.
+            name = next((n for n in PROVIDERS if self._key_of(n)), "Gemini")
+            cls = PROVIDERS[name]
+            self.cfg["provider"] = name
+            self.cfg["model"] = MODELS[name][0]
+            save_config(self.cfg)
         model = self.cfg.get("model") or MODELS[name][0]
+        if model not in MODELS[name]:
+            model = MODELS[name][0]
         if name in NO_KEY:
             p = cls()
             p.model = model
             return p
-        key = (self.cfg.get(f"{name.lower().replace('.', '')}_key")
-               or self.cfg.get(f"{name.lower()}_key") or "").strip()
+        key = self._key_of(name)
         if name == "OCR.space":
             return cls(key, model)
         if not key:
