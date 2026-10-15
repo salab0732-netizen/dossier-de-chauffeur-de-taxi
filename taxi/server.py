@@ -58,6 +58,7 @@ class State:
         self.jobs: dict[int, Job] = {}
         self.logs: dict[int, list] = {}
         self.pages: dict[int, list[bytes]] = {}
+        self.ocr: dict[int, list[str]] = {}
         self.progress: dict[int, dict] = {}
         self.cancel: dict[int, threading.Event] = {}
         self._subs: list[queue.Queue] = []
@@ -175,6 +176,7 @@ class State:
 
         job.data = res.data
         job.warnings = res.warnings
+        self.ocr[job.id] = res.ocr
         try:
             self.pages[job.id] = pdf_to_jpegs(str(job.path), zoom=1.6)
         except Exception:
@@ -473,6 +475,22 @@ def api_review_save(jid: int):
     if not job or not job.data:
         raise HTTPException(404, "لا توجد بيانات")
     return ST._save(job)
+
+
+@app.get("/api/review/{jid}/ocr/{n}")
+def api_ocr(jid: int, n: int):
+    """نصّ OCR لصفحةٍ بعينها — ليُرى سببُ كل خانة فارغة.
+
+    خانةٌ فارغة لها سببان لا ثالث لهما: إمّا أن المسح لم يقرأ القيمة،
+    وإمّا أنها قُرئت والمستخرج لم يلتقطها. والفرق بينهما هو الفرق بين
+    إصلاحٍ في محلّه وتخمينٍ في الهواء — ولا يُعرَف إلا بعرض النصّ.
+    """
+    pages = ST.ocr.get(jid) or []
+    if not 0 <= n < len(pages):
+        return {"text": "", "available": False,
+                "note": "المزوّد الحالي لا يُعيد نصّاً خاماً — النماذج السحابية "
+                        "تقرأ الصورة مباشرةً ولا تمرّ بنصّ وسيط."}
+    return {"text": pages[n], "available": True, "chars": len(pages[n])}
 
 
 @app.get("/api/review/{jid}/page/{n}")

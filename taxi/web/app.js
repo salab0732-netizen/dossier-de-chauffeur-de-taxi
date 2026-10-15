@@ -462,12 +462,39 @@ function loadPage() {
   if (!n) { img.removeAttribute('src'); return; }
   img.src = `/api/review/${S.review.id}/page/${S.page}`;
   applyZoom();
+  loadOcr();
 }
 
 function applyZoom() {
   $('#scanImg').style.transform = `scale(${S.zoom})`;
   $('#zoomLabel').textContent = `${Math.round(S.zoom * 100)}%`;
 }
+
+/* ── نصّ المسح ───────────────────────────────────────────────── */
+
+S.ocrOn = false;
+
+async function loadOcr() {
+  if (!S.ocrOn || !S.review) return;
+  const meta = $('#ocrMeta'), box = $('#ocrText');
+  box.textContent = 'جارٍ التحميل…';
+  try {
+    const d = await api(`/api/review/${S.review.id}/ocr/${S.page}`);
+    box.textContent = d.available ? d.text : (d.note || '');
+    meta.textContent = d.available ? `${d.chars} حرفاً · صفحة ${S.page + 1}` : '';
+  } catch (e) {
+    box.textContent = e.message;
+    meta.textContent = '';
+  }
+}
+
+$('#btnOcr').onclick = () => {
+  S.ocrOn = !S.ocrOn;
+  $('#btnOcr').classList.toggle('is-on', S.ocrOn);
+  $('#ocrView').hidden = !S.ocrOn;
+  $('#scanView').hidden = S.ocrOn;
+  loadOcr();
+};
 
 $('#pgPrev').onclick = () => { if (S.page > 0) { S.page--; loadPage(); } };
 $('#pgNext').onclick = () => { if (S.page < S.review.pages - 1) { S.page++; loadPage(); } };

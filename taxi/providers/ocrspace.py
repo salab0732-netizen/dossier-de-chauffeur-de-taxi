@@ -80,6 +80,7 @@ class OcrSpaceProvider:
     def __init__(self, key: str = "", model: str = "", *_, **__):
         self.key = (key or "").strip()
         self.model = model or OCRSPACE_MODELS[0]
+        self.last_pages: list[str] = []
 
     def _engine(self) -> int:
         return 3 if str(self.model).endswith("3") else 2
@@ -147,5 +148,11 @@ class OcrSpaceProvider:
                               f"({len(data) // 1024} ك.ب)")
         if not any(t.strip() for t in texts):
             raise ProviderError("لم يُستخرج أي نص من الملف عبر OCR.space.")
+
+        # النصّ الخام يُحفَظ ليُعرَض في شاشة المراجعة إلى جانب الصورة.
+        # بدونه لا سبيل لمعرفة سبب خانةٍ فارغة: أهو أن المسح لم يقرأ
+        # القيمة، أم أنها قُرئت والمستخرج لم يلتقطها؟ والفرق بينهما
+        # هو الفرق بين إصلاحٍ في محلّه وتخمينٍ في الهواء.
+        self.last_pages = texts
         return json.dumps(extract_taxi("\f".join(texts), WILAYA_ID, tsv="\f".join(tsvs)),
                           ensure_ascii=False)

@@ -993,3 +993,44 @@ input[type="text"]:focus, input[type="password"]:focus, select:focus {
   .grp-body { grid-template-columns: minmax(0, 1fr); }
   .tbl .w-pr, .tbl .w-wn { display: none; }
 }
+
+/* ══ نصّ المسح ════════════════════════════════════════════════════
+   خانةٌ فارغة لها سببان: إمّا أن المسح لم يقرأ القيمة، وإمّا أنها
+   قُرئت ولم يلتقطها المستخرج. عرضُ النصّ إلى جانب الصورة يفصل
+   بينهما في لحظة — وبدونه يبقى السببُ تخميناً.
+   ══════════════════════════════════════════════════════════════ */
+
+.ocr-view {
+  flex: 1; display: flex; flex-direction: column;
+  overflow: hidden; background: var(--bg);
+}
+
+.ocr-head {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface-2);
+}
+.ocr-head strong { font: 600 12.5px var(--font-display); }
+.ocr-head span { font-size: 11px; color: var(--ink-3); margin-inline-start: auto; }
+
+.ocr-view pre {
+  flex: 1; margin: 0; overflow: auto;
+  padding: 14px;
+  font: 400 12px/1.75 var(--font-mono);
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  direction: rtl;
+  text-align: start;
+}
+.ocr-view pre:empty::before {
+  content: "لا نصّ لهذه الصفحة.";
+  color: var(--ink-3);
+}
+
+#btnOcr.is-on {
+  background: var(--primary-bg);
+  border-color: var(--primary);
+  color: var(--primary);
+}

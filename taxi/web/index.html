@@ -190,12 +190,23 @@
         <span id="pgLabel" class="mono" dir="ltr">—</span>
         <button class="btn btn-icon" id="pgNext" title="التالية">‹</button>
         <div class="spacer"></div>
+        <button class="btn btn-sm" id="btnOcr" title="نصّ المسح لهذه الصفحة">
+          <svg viewBox="0 0 20 20" class="bic" aria-hidden="true"><path d="M4 4h12M4 8h12M4 12h8M4 16h5"/></svg>
+          نصّ المسح
+        </button>
         <button class="btn btn-icon" id="zoomOut" title="تصغير">−</button>
         <span id="zoomLabel" class="mono" dir="ltr">100%</span>
         <button class="btn btn-icon" id="zoomIn" title="تكبير">+</button>
       </div>
       <div class="scan-view" id="scanView">
         <img id="scanImg" alt="صفحة الملف الأصلية">
+      </div>
+      <div class="ocr-view" id="ocrView" hidden>
+        <div class="ocr-head">
+          <strong>ما قرأه المسح في هذه الصفحة</strong>
+          <span id="ocrMeta" class="mono"></span>
+        </div>
+        <pre id="ocrText"></pre>
       </div>
     </div>
   </div>
