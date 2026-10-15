@@ -427,6 +427,14 @@ function jumpTo(text) {
   }
 }
 
+$('#btnDiag').onclick = async () => {
+  try {
+    const d = await post(`/api/review/${S.review.id}/diag`);
+    if (d.ok) toast(`حُفظ التشخيص: ${d.pages} صفحة · ${d.empty} خانة فارغة`, 'ok');
+    else toast(d.error || 'تعذّر الحفظ', 'err');
+  } catch (e) { toast(e.message, 'err'); }
+};
+
 $('#btnRecheck').onclick = async () => {
   await flushEdits();
   const d = await post(`/api/review/${S.review.id}`, { edits: {}, revalidate: true });

@@ -27,7 +27,7 @@ from taxi.constants import (APP_NAME, APP_VERSION, CLAUDE_MODELS, GEMINI_MODELS,
                             OCRSPACE_MODELS, WILAYA_ID)
 from taxi.core.enrich import NIN_FIELD, enrich, section_active
 from taxi.core.normalize import normalize
-from taxi.core.schema import SCHEMA
+from taxi.core.schema import SCHEMA, EXPECTED
 from taxi.core.validate import validate
 from taxi.excel import search as xsearch
 from taxi.excel.writer import write_to_excel
@@ -491,6 +491,60 @@ def api_ocr(jid: int, n: int):
                 "note": "المزوّد الحالي لا يُعيد نصّاً خاماً — النماذج السحابية "
                         "تقرأ الصورة مباشرةً ولا تمرّ بنصّ وسيط."}
     return {"text": pages[n], "available": True, "chars": len(pages[n])}
+
+
+@app.post("/api/review/{jid}/diag")
+def api_diag(jid: int):
+    """يكتب ملفّ تشخيص بجانب ملف الـPDF.
+
+    يجمع في ملفٍّ واحد: نصّ المسح لكل صفحة، وتصنيفها، وما استُخرج
+    منها، والتنبيهات. فيُقارَن ما قرأه المسح بما التقطه المستخرج
+    حقلاً حقلاً — وهو ما لا يُستغنى عنه لإصلاح الأنماط، إذ لا يكفي
+    أن نعرف أن الخانة فارغة، بل أين انقطع الطريق إليها.
+    """
+    job = ST.jobs.get(jid)
+    if not job or not job.data:
+        raise HTTPException(404, "لا توجد بيانات")
+
+    ocr = ST.ocr.get(jid) or []
+    try:
+        from taxi.providers.regex_extract import _kind
+        kinds = [sorted(_kind(p)) for p in ocr]
+    except Exception:
+        kinds = []
+
+    empty = []
+    for grp, fields in EXPECTED.items():
+        if not section_active(job.data, grp):
+            continue
+        sec = job.data.get(grp) or {}
+        labels = {f[0]: f[1] for f in SCHEMA[grp]["fields"]}
+        for f in fields:
+            if str(sec.get(f) or "").strip() == "":
+                empty.append({"قسم": SCHEMA[grp]["title"], "حقل": f,
+                              "تسمية": labels.get(f, f)})
+
+    diag = {
+        "الملف": job.name,
+        "المزوّد": ST.cfg.get("provider"),
+        "النموذج": ST.cfg.get("model"),
+        "الإصدار": APP_VERSION,
+        "عدد الصفحات": len(ocr),
+        "التنبيهات": job.warnings,
+        "خانات فارغة متوقَّعة": empty,
+        "المستخرَج": job.data,
+        "الصفحات": [{"رقم": i + 1, "تصنيف": kinds[i] if i < len(kinds) else [],
+                     "حروف": len(t), "نصّ": t}
+                    for i, t in enumerate(ocr)],
+    }
+
+    dest = job.path.parent / f"{job.path.stem}_تشخيص.json"
+    try:
+        dest.write_text(json.dumps(diag, ensure_ascii=False, indent=1),
+                        encoding="utf-8")
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "path": str(dest), "pages": len(ocr), "empty": len(empty)}
 
 
 @app.get("/api/review/{jid}/page/{n}")
