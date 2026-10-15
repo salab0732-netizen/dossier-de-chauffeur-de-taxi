@@ -23,7 +23,7 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
 from fastapi.staticfiles import StaticFiles
 
 from taxi.config import load_config, save_config
-from taxi.constants import (APP_NAME, APP_VERSION, CLAUDE_MODELS, GEMINI_MODELS,
+from taxi.constants import (APP_NAME, APP_VERSION, CONFIG_FILE, CLAUDE_MODELS, GEMINI_MODELS,
                             OCRSPACE_MODELS, WILAYA_ID)
 from taxi.core.enrich import NIN_FIELD, enrich, section_active
 from taxi.core.normalize import normalize
@@ -538,7 +538,9 @@ def api_diag(jid: int):
                     for i, t in enumerate(ocr)],
     }
 
-    dest = job.path.parent / f"{job.path.stem}_تشخيص.json"
+    # يُكتب في مجلّد البرنامج لا بجانب الـPDF: الملف المسحوب يُنسَخ
+    # إلى مجلّد Windows المؤقّت، فيضيع التشخيص هناك ولا يجده أحد.
+    dest = CONFIG_FILE.parent / f"{job.path.stem}_تشخيص.json"
     try:
         dest.write_text(json.dumps(diag, ensure_ascii=False, indent=1),
                         encoding="utf-8")
