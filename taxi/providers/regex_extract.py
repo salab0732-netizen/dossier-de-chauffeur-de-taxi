@@ -152,6 +152,53 @@ _DL_NOISE = {"DRIVING", "LICENSE", "LICENCE", "PERMIS", "CONDUIRE", "DZ",
 _DL_CATS = ("A1", "A2", "C1", "D1", "B", "C", "D", "E", "F", "A")
 
 
+# الحرف العربي ← صامته اللاتيني. الصوائت تُسقَط من الطرفَين لأن
+# النقحرة لا تثبت عليها: بلفضال ↔ BELFEDAL، بن خيرة ↔ BENKHIRA.
+_TRANSLIT = {
+    "ا": "", "أ": "", "إ": "", "آ": "", "ى": "", "ة": "t", "ه": "h",
+    "ب": "b", "ت": "t", "ث": "t", "ج": "j", "ح": "h", "خ": "k",
+    "د": "d", "ذ": "d", "ر": "r", "ز": "z", "س": "s", "ش": "s",
+    "ص": "s", "ض": "d", "ط": "t", "ظ": "d", "ع": "", "غ": "k",
+    "ف": "f", "ق": "k", "ك": "k", "ل": "l", "م": "m", "ن": "n",
+    "و": "", "ي": "", "ء": "", "ؤ": "", "ئ": "",
+}
+_LAT_VOWELS = str.maketrans("", "", "aeiouyAEIOUY'- ")
+
+
+def _skeleton_ar(s: str) -> str:
+    return "".join(_TRANSLIT.get(c, "") for c in _ar(s))
+
+
+def _skeleton_lat(s: str) -> str:
+    s = "".join(c for c in (s or "") if c.isalpha() or c in "'- ")
+    s = s.translate(_LAT_VOWELS).lower()
+    # الحروف المركّبة الفرنسية ← صامت واحد، ثم تُدمَج التكرارات
+    for a, b in (("ch", "s"), ("kh", "k"), ("gh", "k"), ("ph", "f"),
+                 ("th", "t"), ("dh", "d"), ("ss", "s"), ("ll", "l"),
+                 ("tt", "t"), ("nn", "n"), ("mm", "m"), ("c", "k"),
+                 # القاف تُنقحَر g في العرف المغاربي (Guerguit = قرقيط)
+                 # كما تُنقحَر k أو q، فتُدمَج الصوامت الخلفية في k.
+                 ("g", "k"), ("q", "k")):
+        s = s.replace(a, b)
+    return s
+
+
+def _translit_match(ar: str, lat: str) -> float:
+    """تشابه اسم عربي واسم لاتيني بمقارنة هيكلهما الصامت.
+
+    شهادات CNAS وCASNOS عناوينها عربية وقيمها لاتينية وحدها، فلا
+    يُعرَف صاحبها بمطابقة عربية. ومقارنة «BELFEDAL» بـ«بلفضال»
+    حرفاً بحرف مستحيلة، أمّا هيكلاهما الصامتان — blfdl و blfdl —
+    فيتطابقان.
+    """
+    a, l = _skeleton_ar(ar), _skeleton_lat(lat)
+    # حرفان يكفيان: «حاجي» هيكلها hj، و«HADJI» هيكلها hdj — واشتراطُ
+    # ثلاثةٍ كان يُسقط الأسماء القصيرة وهي كثيرة.
+    if len(a) < 2 or len(l) < 2:
+        return 0.0
+    return _difflib.SequenceMatcher(None, a, l).ratio()
+
+
 def _fill(d: dict, **kv) -> None:
     """يملأ الخانات الفارغة وحدها.
 
@@ -583,12 +630,25 @@ def extract_taxi(text: str, wilaya: int = 32, tsv: str | None = None) -> dict:
     pre_op = op.get("prenom_ar") or ""
 
     def is_op_page(p: str) -> bool:
-        """هل الصفحة تخصّ المتعامل؟ (لقبه أو اسمه الكامل مذكور فيها)"""
+        """هل الصفحة تخصّ المتعامل؟ (لقبه أو اسمه مذكور فيها)
+
+        تُقبل بمطابقة عربية، أو — إن كانت الصفحة لاتينية القيم كشهادتَي
+        CNAS وCASNOS — بمطابقة الهيكل الصامت. كان الاشتراطُ مطابقةً
+        عربيةً وحدها يحجب أنظف صفحات الملف: شهادة CNAS عناوينها عربية
+        وقيمها لاتينية، فلا لقب عربي فيها يُطابَق، فتُسقَط كلّها ويضيع
+        منها اللقب والاسم واسم الأب والأمّ والعنوان.
+        """
         if not nom_op:
             return True
         words = _re.findall(r"[ء-ي]{2,}", p)
-        return any(_similar(w, nom_op) >= 0.75 for w in words) or \
-            any(_similar(w, pre_op) >= 0.85 for w in words if len(_ar(w)) >= 4)
+        if any(_similar(w, nom_op) >= 0.75 for w in words) or \
+           any(_similar(w, pre_op) >= 0.85 for w in words if len(_ar(w)) >= 4):
+            return True
+        # لاتينيّ: يُقارَن اللقب المطبوع بالهيكل الصامت للقب العربي
+        for m in _re.finditer(r"(?:Nom|NOM)\s*[:.]?\s*([A-Z][A-Za-z\-']{2,})", p):
+            if _translit_match(nom_op, m.group(1)) >= 0.75:
+                return True
+        return False
 
     # ② تاريخ الميلاد والأبوان والأسماء اللاتينية — من وثائق المتعامل
     dn_votes: dict[str, int] = {}
@@ -650,6 +710,26 @@ def extract_taxi(text: str, wilaya: int = 32, tsv: str | None = None) -> dict:
             op["prenom"] = _latin_after(r"Pr[ée]nom\S*", p, 2)
         if not op.get("prenom_pere"):
             op["prenom_pere"] = _latin_after(r"Fils\s*(?:\(Fille\)\s*)?de", p, 2)
+
+        # الأمّ: «Et de : LAQAB Ism» وكذلك «Et : LAQAB Ism» بلا de —
+        # والشهادة الرسمية تكتبها بلا de، فكان السطر يُفلت كلّه.
+        if not op.get("nom_mere"):
+            mm = _re.search(r"\bEt\s*(?:de\s*)?[:.]\s*"
+                            r"([A-Z][A-Za-z\-']{2,})\s+([A-Z][A-Za-z\-']{2,})", p)
+            if mm:
+                op["nom_mere"] = _title(mm.group(1))
+                op["prenom_mere"] = _title(mm.group(2))
+
+        # العنوان اللاتيني — لم يكن يُقرأ أصلاً
+        if not op.get("adresse"):
+            ma = _re.search(r"Adresse\s*[:.]\s*([^\n]{4,80})", p)
+            if ma:
+                v = _re.sub(r"\s*:\s*[^\n]*$", "", ma.group(1)).strip(" .-")
+                v = _re.sub(r"[^\w\s\-/',]", " ", v, flags=_re.UNICODE)
+                v = " ".join(v.split())
+                if len(v) >= 4:
+                    op["adresse"] = v
+
         m = _re.search(r"(?:ابن|أبن|اين|إن)\s*(?:\(ة\))?\s*:\s*([^\n]+)", p)
         m2 = _re.search(r"Et\s*de\s*[:.]?\s*([^\n]+)", p)
         if m and not op.get("prenom_pere_ar"):
@@ -679,7 +759,9 @@ def extract_taxi(text: str, wilaya: int = 32, tsv: str | None = None) -> dict:
             d = _re.sub(r"\D", "", m.group(1))
             if len(d) == 12 and not _re.search(r"غير\s*منتسب\s*(?:إلى|الى|ل)\s*هي", p[:m.start()]):
                 op["numero_cnas"] = d
-        m = _re.search(r"(?:عقد\s*الميلاد|N°\s*Acte)\s*:?\s*(\d{2,5})\b", p)
+        # «N° acte naissance» بحرف صغير — كان النمط يشترط Acte بالكبير
+        m = _re.search(r"(?:عقد\s*الميلاد|N°?\s*acte(?:\s*naissance)?)"
+                       r"\s*:?\s*(\d{2,5})\b", p, _re.IGNORECASE)
         if m and not op.get("n_acte_naissance"):
             op["n_acte_naissance"] = str(int(m.group(1)))
     for p in pg("casnos"):
