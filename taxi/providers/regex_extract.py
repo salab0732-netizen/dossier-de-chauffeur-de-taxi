@@ -114,7 +114,16 @@ def _title(s: str | None) -> str | None:
     s = " ".join(w for w in s.split() if len(w) >= 2)
     if not s or len(s) < 2:
         return None
-    return " ".join(p.capitalize() for p in s.split())
+
+    def cap(w: str) -> str:
+        # الشرطة والفاصلة العليا تفصلان اسمَين مركّبَين، فيُكبَّر ما بعدهما:
+        # EL-BACHIR ← El-Bachir لا El-bachir، وكذلك D'AMER ← D'Amer.
+        for sep in ("-", "'"):
+            if sep in w:
+                return sep.join(cap(x) for x in w.split(sep))
+        return w.capitalize()
+
+    return " ".join(cap(p) for p in s.split())
 
 
 def _latin_after(label_rx: str, page: str, maxw: int = 3) -> str | None:
@@ -131,6 +140,64 @@ def _latin_after(label_rx: str, page: str, maxw: int = 3) -> str | None:
             break
         words.append(w)
     return _title(" ".join(words[:maxw])) if words else None
+
+
+# كلمات لاتينية ترد في رخصة السياقة وليست اسماً
+_DL_NOISE = {"DRIVING", "LICENSE", "LICENCE", "PERMIS", "CONDUIRE", "DZ",
+             "REPUBLIQUE", "ALGERIENNE", "DEMOCRATIQUE", "POPULAIRE",
+             "NOM", "PRENOM", "DATE", "LIEU", "NAISSANCE", "CAMSCANNER",
+             "SCANNE", "AVEC", "NIN", "CAT", "CATEGORIES"}
+
+# أصناف رخص السياقة الجزائرية، من الأطول إلى الأقصر ليُلتقط C1 قبل C
+_DL_CATS = ("A1", "A2", "C1", "D1", "B", "C", "D", "E", "F", "A")
+
+
+def _fill(d: dict, **kv) -> None:
+    """يملأ الخانات الفارغة وحدها.
+
+    عكس dict.update: لا يكتب قيمةً فارغة فوق قيمة مقروءة، ولا يُزيح
+    ما استُخرج من وثيقته الأصلية بقيمةٍ منسوخة من قسم آخر.
+    """
+    for k, v in kv.items():
+        if v in (None, "", []):
+            continue
+        if d.get(k) in (None, "", []):
+            d[k] = v
+
+
+def _permis_cats(page: str) -> str | None:
+    """أصناف رخصة السياقة من الخانة 9.
+
+    تَرِد مفصولةً («B C C1 D») أو ملتصقةً إن ابتلع المسح الفراغات
+    («BCC1D»، وربّما «BCCID» بالحرف I مكان الرقم 1). تُقبل الملتصقة
+    فقط إن انقسمت انقساماً تامّاً إلى أصناف صحيحة — وإلّا تُترك فارغة
+    ليرفعها الفحص للمراجعة، فصنفٌ مخمون في رخصة سياقة أسوأ من خانة
+    فارغة يُصحّحها موظّف.
+    """
+    # ① الشكل المفصول: صنفان فأكثر متتاليان
+    m = _re.search(r"\b((?:(?:A[12]?|B|C1|C|D1|D|E|F)[\s.]+){1,5}"
+                   r"(?:A[12]?|B|C1|C|D1|D|E|F))\b", page)
+    if m:
+        toks = [t for t in _re.split(r"[\s.]+", m.group(1)) if t]
+        if 2 <= len(toks) <= 6:
+            return " ".join(toks)
+
+    # ② الشكل الملتصق: يُقسَم جشعاً، ولا يُقبل إلا إن استُهلك كاملاً
+    for raw in _re.findall(r"\b([ABCDEF][ABCDEFI12]{2,7})\b", page):
+        s = raw.replace("I", "1")
+        out, i = [], 0
+        while i < len(s):
+            for c in _DL_CATS:
+                if s.startswith(c, i):
+                    out.append(c)
+                    i += len(c)
+                    break
+            else:
+                out = []
+                break
+        if len(out) >= 2:
+            return " ".join(out)
+    return None
 
 
 def _nins(s: str) -> list[str]:
@@ -721,11 +788,59 @@ def extract_taxi(text: str, wilaya: int = 32, tsv: str | None = None) -> dict:
                 ch.setdefault("date_certificat_formation", d[0])
                 break
 
-    # ⑤ رخصة السياقة (نادراً ما تُقرأ — صورة بطاقة) ───────────────────
+    # ⑤ رخصة السياقة ───────────────────────────────────────────────────
+    #
+    # البطاقة مرقّمة الخانات: 1 اللقب · 2 الاسم · 3 الميلاد · 4a الإصدار
+    # 4b الانتهاء · 4d رقم التعريف · 9 الأصناف · 15 الجنس.
+    # لكن أرقام الخانات أوّل ما يضيع في المسح، فلا يُعوَّل عليها —
+    # يُعوَّل على شكل القيمة نفسها وعلى ترتيب ورودها.
     for p in pg("permis"):
-        m = _re.search(r"\b(L\s?\d{8})\b|\b(\d{2}/\d{2}/\d{5})\b", p)
-        if m and not ch.get("n_permis"):
-            ch["n_permis"] = (m.group(1) or m.group(2)).replace(" ", "")
+        if not ch.get("n_permis"):
+            m = _re.search(r"\b(L\s?\d{8})\b|\b(\d{2}/\d{2}/\d{5})\b", p)
+            if m:
+                ch["n_permis"] = (m.group(1) or m.group(2)).replace(" ", "")
+
+        # ── التواريخ: تُصنَّف بمداها لا بخانتها ──
+        # الإصدار والانتهاء بينهما عشر سنوات في الرخصة الجزائرية.
+        lic = [d for d in _dates(p, 2000, 2045)]
+        if len(lic) >= 2:
+            lic.sort()
+            ch.setdefault("date_delivrance_permis", lic[0])
+            ch.setdefault("validite_categorie_permis", lic[-1])
+        elif len(lic) == 1:
+            ch.setdefault("date_delivrance_permis", lic[0])
+
+        born = [d for d in _dates(p, 1920, 2007)]
+        if born:
+            ch.setdefault("date_naissance", born[0])
+
+        # ── الأصناف ──
+        cat = _permis_cats(p)
+        if cat:
+            ch.setdefault("categorie_permis", cat)
+
+        # ── الاسم واللقب اللاتينيان ──
+        # الخانة 1 اللقب والخانة 2 الاسم، وترتيبهما يصمد وإن ضاع رقم
+        # الخانة. لكن المسح يُخلّف كلماتٍ كبيرةً لا معنى لها («NOR»،
+        # «HAL»)، فتُشترَط أربعة أحرف فأكثر وحرف علّة — فأسماء البشر
+        # فيها علّة، وبقايا المسح وسلاسل الأصناف غالباً لا.
+        # وإن بقي أكثر من ثلاثة مرشّحين فالصفحة ضجيج: تُترك الخانتان
+        # فارغتَين ليرفعهما الفحص، فاسمٌ مخمون في سجلّ رسمي أسوأ من
+        # خانة فارغة يملؤها موظّف ناظرٌ إلى الرخصة.
+        caps = [w for w in _re.findall(r"\b([A-Z][A-Z\-']{3,})\b", p)
+                if w not in _DL_NOISE
+                and _re.search(r"[AEIOU]", w)
+                and not _permis_cats(w)]
+        if 2 <= len(caps) <= 3:
+            ch.setdefault("nom", _title(caps[0]))
+            ch.setdefault("prenom", _title(caps[1]))
+
+        # ── الجنس: الخانة 15 ──
+        if not ch.get("sexe"):
+            if _re.search(r"\bذكر\b", p):
+                ch["sexe"] = "M"
+            elif _re.search(r"\bأنثى\b|\bانثى\b", p):
+                ch["sexe"] = "F"
 
     # ⑥ قرار منح الرخصة لذي الحق (المجاهد/الأرملة/الابنة) ──────────────
     _STOP = {"ابنة", "إبنة", "ابن", "إبن", "بنت", "ابت", "ابئة", "المولود", "المولودة",
@@ -813,16 +928,21 @@ def extract_taxi(text: str, wilaya: int = 32, tsv: str | None = None) -> dict:
             op["date_debut_contrat"] >= op["date_fin_contrat"]:
         op.pop("date_debut_contrat")
 
+    # الثوابت تُفرَض، أمّا هويّة السائق فتُنسَخ من المتعامل إلى الخانات
+    # الفارغة وحدها: في أغلب الملفات المالك هو السائق، لكنّ النسخ بـupdate
+    # كان يكتب None فوق ما قُرئ من رخصة السياقة فيمحوه — فكان الاسم
+    # والتاريخ والصنف تُستخرج ثم تُفقَد قبل أن تصل إلى الشاشة.
     ch.update({
         "id_wilaya": str(wilaya), "activite": "Transports par Taxi",
         "nature_activite": nature, "qualite_chauffeur": "Principal",
-        "nin": op.get("nin"), "nom_ar": op.get("nom_ar"), "prenom_ar": op.get("prenom_ar"),
-        "nom": op.get("nom"), "prenom": op.get("prenom"),
-        "date_naissance": op.get("date_naissance"), "sexe": op.get("sexe"),
-        "n_acte_naissance": op.get("n_acte_naissance"),
-        "numero_cnas": op.get("numero_cnas"), "numero_casnos": op.get("numero_casnos"),
-        "adresse_ar": op.get("adresse_ar"),
     })
+    _fill(ch,
+          nin=op.get("nin"), nom_ar=op.get("nom_ar"), prenom_ar=op.get("prenom_ar"),
+          nom=op.get("nom"), prenom=op.get("prenom"),
+          date_naissance=op.get("date_naissance"), sexe=op.get("sexe"),
+          n_acte_naissance=op.get("n_acte_naissance"),
+          numero_cnas=op.get("numero_cnas"), numero_casnos=op.get("numero_casnos"),
+          adresse_ar=op.get("adresse_ar"))
     if ch.get("n_delivrance_licence_exploitation") and op.get("date_debut_contrat"):
         ch.setdefault("date_delivrance_licence_exploitation", op["date_debut_contrat"])
 

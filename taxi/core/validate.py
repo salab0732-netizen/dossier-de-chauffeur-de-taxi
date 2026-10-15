@@ -10,7 +10,7 @@ import datetime
 import re
 
 from taxi.constants import WILAYA_ID
-from taxi.core.schema import SCHEMA, ENUM_FIELDS
+from taxi.core.schema import SCHEMA, ENUM_FIELDS, EXPECTED, SOURCE_DOC
 from taxi.core.vocabulary import _VOCAB
 from taxi.core.text import _norm
 from taxi.core.enrich import (section_active, decode_nin, decode_cnas,
@@ -200,5 +200,34 @@ def validate(data: dict) -> list[str]:
             except (ValueError, TypeError):
                 warn.append(f"[{title}] رقم التعريف يخالف الوثيقة في السنة والشهادة معاً")
 
+    # ══════════════════════════════════════════════════════════════════
+    #  الحقول المتوقَّعة الفارغة
+    #
+    #  كان الفحص يتحقّق من اتّساق ما قُرئ فقط، فيمرّ سجلٌّ نصفه فارغ
+    #  بصفر تنبيهات: رخصة السياقة أمام الموظّف تحمل التاريخ والصنف
+    #  والاسم، والحقول خالية، والبرنامج يقول «اجتاز الفحص».
+    #
+    #  لا يُدخَل تلقائياً إلا ما اجتاز الفحص بصفر تنبيهات — وهذا الوعد
+    #  بلا معنى إن كان الفحص لا يرى الفراغ.
+    # ══════════════════════════════════════════════════════════════════
+    for grp, fields in EXPECTED.items():
+        if not section_active(data, grp):
+            continue
+        sec = data.get(grp) or {}
+        labels = {f[0]: f[1] for f in SCHEMA[grp]["fields"]}
+        title = SCHEMA[grp]["title"]
+
+        missing = [f for f in fields if str(sec.get(f) or "").strip() == ""]
+        if not missing:
+            continue
+
+        # تُجمَع حسب الوثيقة التي تُقرأ منها، فينظر الموظّف في ورقة واحدة
+        by_doc: dict[str, list[str]] = {}
+        for f in missing:
+            by_doc.setdefault(SOURCE_DOC.get(f, ""), []).append(labels.get(f, f))
+
+        for doc, names in by_doc.items():
+            where = f" — انظر في {doc}" if doc else ""
+            warn.append(f"[{title}] لم تُقرأ: {' · '.join(names)}{where}")
 
     return warn

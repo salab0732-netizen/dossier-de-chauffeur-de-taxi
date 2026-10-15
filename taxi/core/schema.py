@@ -273,3 +273,69 @@ ENUM_FIELDS = {
     ("operateur", "type_personne_morale"), ("operateur", "cessation_activite"),
     ("chauffeur_manaoub", "sexe"),
 }
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  الحقول المتوقَّعة — ما ينبغي أن يُقرأ من الوثائق في كل قسم نشط
+#
+#  أُضيفت في v7.1 لأن الفحص كان يتحقّق من اتّساق ما قُرئ فقط، فيمرّ
+#  سجلٌّ نصفه فارغ بصفر تنبيهات. ورخصة السياقة أمام الموظّف تحمل
+#  التاريخ والصنف والاسم، والحقول خالية، والبرنامج يقول «اجتاز الفحص».
+#
+#  لا تدخل هنا الحقول الاختيارية: حقول الشركة (تُملأ للشخص المعنوي
+#  وحده)، ولا ما لا يَرد في الوثائق المعتادة (فصيلة الدم، رقم الهاتف).
+# ══════════════════════════════════════════════════════════════════════
+
+EXPECTED = {
+    "operateur": [
+        "id_wilaya", "nin", "nom", "prenom", "nom_ar", "prenom_ar",
+        "date_naissance", "sexe", "adresse_ar", "n-porte",
+        "qualite_oper_physique", "activite", "nature_activite",
+    ],
+    "chauffeur": [
+        "id_wilaya", "nin", "nom", "prenom", "nom_ar", "prenom_ar",
+        "date_naissance", "sexe", "adresse_ar",
+        "n_permis", "date_delivrance_permis", "categorie_permis",
+        "qualite_chauffeur", "activite", "nature_activite",
+    ],
+    "chauffeur_manaoub": [
+        "id_wilaya", "nin", "nom_ar", "prenom_ar", "date_naissance", "sexe",
+        "n_permis", "date_delivrance_permis", "categorie_permis",
+        "qualite_chauffeur", "activite", "nature_activite",
+    ],
+    "vehicule": [
+        "id_wilaya", "n_porte", "n_immatriculation", "n_carte_gris",
+        "marque", "genre", "energie", "n_siege", "n_chasis",
+        "activite", "nature_activite",
+    ],
+    "licence_modjahid": [
+        "id_wilaya", "n_porte", "nin_modjahid", "nom_ar", "prenom_ar",
+        "type_licence", "n_decision_octroi", "date_decision_octroi",
+    ],
+}
+
+# الوثيقة التي يُقرأ منها كل حقل — تُذكَر في التنبيه ليعرف الموظّف أين ينظر
+SOURCE_DOC = {
+    "n_permis":                 "رخصة السياقة",
+    "date_delivrance_permis":   "رخصة السياقة",
+    "categorie_permis":         "رخصة السياقة",
+    "validite_categorie_permis":"رخصة السياقة",
+    "nin":                      "بطاقة التعريف",
+    "nin_modjahid":             "بطاقة التعريف",
+    "date_naissance":           "بطاقة التعريف أو شهادة الميلاد",
+    "n_acte_naissance":         "شهادة الميلاد",
+    "n_immatriculation":        "البطاقة الرمادية",
+    "n_carte_gris":             "البطاقة الرمادية",
+    "n_chasis":                 "البطاقة الرمادية",
+    "marque":                   "البطاقة الرمادية",
+    "genre":                    "البطاقة الرمادية",
+    "energie":                  "البطاقة الرمادية",
+    "n_siege":                  "البطاقة الرمادية",
+    "n_decision_octroi":        "القرار الولائي",
+    "date_decision_octroi":     "القرار الولائي",
+    "type_licence":             "القرار الولائي",
+    "n-porte":                  "رخصة الاستغلال",
+    "n_porte":                  "رخصة الاستغلال",
+    "numero_cnas":              "شهادة CNAS",
+    "numero_casnos":            "شهادة CASNOS",
+}
