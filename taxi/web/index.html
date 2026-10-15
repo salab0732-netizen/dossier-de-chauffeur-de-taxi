@@ -1,13 +1,13 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>سيارات الأجرة — ولاية البيض</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d6b4f'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='15' font-weight='700' fill='%23fff' text-anchor='middle'%3E32%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23d4a03c'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='15' font-weight='700' fill='%23101722' text-anchor='middle'%3E32%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
@@ -15,7 +15,13 @@
 <!-- ══ الشريط الجانبي ══ -->
 <aside class="rail">
   <div class="rail-brand">
-    <div class="rail-wilaya">32</div>
+    <div class="seal">
+      <svg viewBox="0 0 44 44" aria-hidden="true">
+        <circle cx="22" cy="22" r="20" class="seal-ring"/>
+        <circle cx="22" cy="22" r="16.5" class="seal-ring2"/>
+        <text x="22" y="28" class="seal-txt">32</text>
+      </svg>
+    </div>
     <div class="rail-name">
       <strong>سيارات الأجرة</strong>
       <span>ولاية البيض</span>
@@ -24,26 +30,39 @@
 
   <nav class="rail-nav">
     <button class="nav-item is-active" data-view="extract">
-      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5v9m0 0L6.5 8M10 11.5 13.5 8M3.5 13v2.5a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V13"/></svg>
-      <span>الاستخراج</span>
+      <span class="nav-ic c-extract">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5v9m0 0L6.5 8M10 11.5 13.5 8M3.5 13v2.5a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V13"/></svg>
+      </span>
+      <span class="nav-lb">الاستخراج</span>
       <em class="nav-count" data-count="queue"></em>
     </button>
     <button class="nav-item" data-view="review">
-      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3.5h8.5L16 7v9.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Zm8 0V7h4M7 11h6M7 14h4"/></svg>
-      <span>المراجعة</span>
+      <span class="nav-ic c-review">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 3.5h8.5L16 7v9.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Zm8 0V7h4M7 11h6M7 14h4"/></svg>
+      </span>
+      <span class="nav-lb">المراجعة</span>
       <em class="nav-count is-warn" data-count="review"></em>
     </button>
     <button class="nav-item" data-view="records">
-      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg>
-      <span>السجلّات</span>
+      <span class="nav-ic c-records">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg>
+      </span>
+      <span class="nav-lb">السجلّات</span>
     </button>
     <button class="nav-item" data-view="settings">
-      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="2.5"/><path d="M10 2v2m0 12v2M3.5 6.2l1.7 1M14.8 12.8l1.7 1M3.5 13.8l1.7-1M14.8 7.2l1.7-1"/></svg>
-      <span>الإعدادات</span>
+      <span class="nav-ic c-settings">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="2.5"/><path d="M10 2v2m0 12v2M3.5 6.2l1.7 1M14.8 12.8l1.7 1M3.5 13.8l1.7-1M14.8 7.2l1.7-1"/></svg>
+      </span>
+      <span class="nav-lb">الإعدادات</span>
     </button>
   </nav>
 
   <div class="rail-foot">
+    <button class="theme-btn" id="themeBtn" title="تبديل السمة">
+      <svg viewBox="0 0 20 20" class="ic-moon" aria-hidden="true"><path d="M16 11.5A6.5 6.5 0 0 1 8.5 4a6.5 6.5 0 1 0 7.5 7.5Z"/></svg>
+      <svg viewBox="0 0 20 20" class="ic-sun" aria-hidden="true"><circle cx="10" cy="10" r="3.6"/><path d="M10 2v1.8m0 12.4V18M3.5 10H2m16 0h-1.5M5.4 5.4 4.3 4.3m11.4 11.4-1.1-1.1M5.4 14.6l-1.1 1.1M15.7 4.3l-1.1 1.1"/></svg>
+      <span id="themeLabel">فاتح</span>
+    </button>
     <div class="prov-chip" id="provChip">
       <span class="dot"></span>
       <span id="provName">—</span>
@@ -54,16 +73,38 @@
 
 <main class="main">
 
+<!-- ══ شريط الصدر ══ -->
+<div class="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-in">
+    <div class="hero-txt">
+      <h1 id="heroTitle">نظام إدخال بيانات سيارات الأجرة</h1>
+      <p id="heroSub">رخص الاستغلال الممسوحة ضوئياً — تُقرأ وتُفحَص وتُدخَل في الملف الرسمي.</p>
+      <div class="hero-stats" id="heroStats"></div>
+    </div>
+    <div class="hero-seal">
+      <svg viewBox="0 0 120 120" aria-hidden="true">
+        <circle cx="60" cy="60" r="54" class="hs-ring"/>
+        <circle cx="60" cy="60" r="45" class="hs-ring2"/>
+        <circle cx="60" cy="60" r="38" class="hs-fill"/>
+        <text x="60" y="56" class="hs-n">32</text>
+        <text x="60" y="76" class="hs-w">البيض</text>
+      </svg>
+    </div>
+  </div>
+</div>
+
 <!-- ══ الاستخراج ══ -->
 <section class="view is-active" data-view="extract">
   <header class="vh">
     <div>
-      <h1>الاستخراج</h1>
+      <h2>الاستخراج</h2>
       <p>اسحب ملفات PDF الممسوحة ضوئياً، أو أضف مجلّداً كاملاً.</p>
     </div>
     <div class="vh-act">
       <button class="btn btn-ghost" id="btnClearDone">إخفاء المُنتهية</button>
       <label class="btn btn-primary">
+        <svg viewBox="0 0 20 20" class="bic" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>
         اختيار ملفات
         <input type="file" id="filePick" accept=".pdf" multiple hidden>
       </label>
@@ -71,7 +112,9 @@
   </header>
 
   <div class="drop" id="drop">
-    <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 8v22m0 0-7-7m7 7 7-7M10 32v5a3 3 0 0 0 3 3h22a3 3 0 0 0 3-3v-5"/></svg>
+    <div class="drop-ic">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 9v21m0 0-8-8m8 8 8-8M11 32v5a3 3 0 0 0 3 3h20a3 3 0 0 0 3-3v-5"/></svg>
+    </div>
     <strong>اسحب الملفات إلى هنا</strong>
     <span>أو استعمل زرّ الاختيار · PDF فقط</span>
     <div class="drop-path">
@@ -82,7 +125,7 @@
 
   <div class="counters" id="counters"></div>
 
-  <div class="table-wrap">
+  <div class="panel">
     <table class="tbl" id="queueTbl">
       <thead>
         <tr>
@@ -97,6 +140,9 @@
       <tbody id="queueBody"></tbody>
     </table>
     <div class="empty-state" id="queueEmpty">
+      <div class="es-ic">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+      </div>
       <strong>الطابور فارغ</strong>
       <span>أضف ملفاً لتبدأ المعالجة.</span>
     </div>
@@ -112,20 +158,22 @@
 <section class="view" data-view="review">
   <header class="vh">
     <div>
-      <h1>المراجعة والتحرير</h1>
-      <p id="reviewSub">اختر ملفاً من الطابور لمراجعة حقوله.</p>
+      <h2>المراجعة والتحرير</h2>
+      <p id="reviewSub">اختر ملفاً لمراجعة حقوله إلى جانب الصورة الأصلية.</p>
     </div>
     <div class="vh-act" id="reviewAct" hidden>
       <span class="warn-pill" id="warnPill" hidden></span>
       <button class="btn btn-ghost" id="btnRecheck">إعادة الفحص</button>
-      <button class="btn btn-primary" id="btnSaveXl">حفظ في Excel</button>
+      <button class="btn btn-primary" id="btnSaveXl">
+        <svg viewBox="0 0 20 20" class="bic" aria-hidden="true"><path d="M4 4h9l3 3v9H4z"/><path d="M7 4v4h6M7 16v-5h6v5"/></svg>
+        حفظ في Excel
+      </button>
     </div>
   </header>
 
   <div class="rev-pick" id="revPick"></div>
 
   <div class="split" id="split" hidden>
-    <!-- الحقول -->
     <div class="pane pane-fields">
       <div class="warns" id="warns" hidden></div>
       <div class="legend">
@@ -136,7 +184,6 @@
       <div id="groups"></div>
     </div>
 
-    <!-- الصورة الأصلية -->
     <div class="pane pane-scan">
       <div class="scan-bar">
         <button class="btn btn-icon" id="pgPrev" title="السابقة">›</button>
@@ -144,7 +191,7 @@
         <button class="btn btn-icon" id="pgNext" title="التالية">‹</button>
         <div class="spacer"></div>
         <button class="btn btn-icon" id="zoomOut" title="تصغير">−</button>
-        <span id="zoomLabel" class="mono">100%</span>
+        <span id="zoomLabel" class="mono" dir="ltr">100%</span>
         <button class="btn btn-icon" id="zoomIn" title="تكبير">+</button>
       </div>
       <div class="scan-view" id="scanView">
@@ -158,8 +205,8 @@
 <section class="view" data-view="records">
   <header class="vh">
     <div>
-      <h1>السجلّات المُدخَلة</h1>
-      <p>بحث في ملف Excel الرسمي — برقم الباب، الاسم، أو رقم التعريف.</p>
+      <h2>السجلّات المُدخَلة</h2>
+      <p>بحث في ملف Excel الرسمي — برقم الباب، الاسم، رقم التعريف، أو التسجيل.</p>
     </div>
   </header>
 
@@ -173,12 +220,15 @@
     </div>
   </div>
 
-  <div class="table-wrap">
+  <div class="panel">
     <table class="tbl tbl-rec" id="recTbl">
       <thead id="recHead"></thead>
       <tbody id="recBody"></tbody>
     </table>
     <div class="empty-state" id="recEmpty">
+      <div class="es-ic">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M16 16l5 5"/></svg>
+      </div>
       <strong>لا نتائج</strong>
       <span>جرّب كلمةً أقصر، أو تحقّق من مسار ملف Excel في الإعدادات.</span>
     </div>
@@ -190,7 +240,7 @@
 <section class="view" data-view="settings">
   <header class="vh">
     <div>
-      <h1>الإعدادات</h1>
+      <h2>الإعدادات</h2>
       <p>المزوّد والمفاتيح ومسار ملف Excel. تُحفظ في <code>config.json</code> بجانب البرنامج.</p>
     </div>
     <div class="vh-act">
@@ -201,7 +251,7 @@
 
   <div class="cards">
     <div class="card">
-      <h2>مزوّد الاستخراج</h2>
+      <h3><span class="h-ic c-extract"><svg viewBox="0 0 20 20"><path d="M10 2.5v9m0 0L6.5 8M10 11.5 13.5 8M3.5 13v2.5a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V13"/></svg></span>مزوّد الاستخراج</h3>
       <div class="prov-grid" id="provGrid"></div>
 
       <label class="fld">
@@ -224,7 +274,7 @@
     </div>
 
     <div class="card">
-      <h2>ملف Excel الرسمي</h2>
+      <h3><span class="h-ic c-records"><svg viewBox="0 0 20 20"><path d="M4 4h9l3 3v9H4z"/><path d="M7 4v4h6"/></svg></span>ملف Excel الرسمي</h3>
       <label class="fld">
         <span>المسار</span>
         <div class="row">
@@ -243,7 +293,7 @@
         <span>حفظ تلقائي عند صفر تنبيهات<em>ما فيه أدنى شكّ يقف للمراجعة</em></span>
       </label>
 
-      <h2 class="mt">المجلّد المراقَب</h2>
+      <h3 class="mt"><span class="h-ic c-review"><svg viewBox="0 0 20 20"><path d="M3 5.5h5l1.5 2H17v8H3z"/></svg></span>المجلّد المراقَب</h3>
       <label class="fld">
         <span>المسار</span>
         <div class="row">
@@ -258,7 +308,6 @@
 
 </main>
 
-<!-- متصفّح الملفات -->
 <div class="modal" id="browseModal" hidden>
   <div class="modal-box">
     <header>

@@ -22,6 +22,7 @@ const S = {
   group: 'operateur',
   browseFor: null,
   browsePath: '',
+  totals: 0,        // مجموع السجلّات في Excel
 };
 
 const api = async (path, opts = {}) => {
@@ -49,7 +50,23 @@ function toast(msg, kind = '') {
   }, kind === 'err' ? 6500 : 3200);
 }
 
+/* ── السمة ───────────────────────────────────────────────────── */
+
+const THEMES = { dark: 'فاتح', light: 'داكن' };
+
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  $('#themeLabel').textContent = THEMES[t];
+  try { localStorage.setItem('taxi-theme', t); } catch {}
+}
+
+$('#themeBtn').onclick = () =>
+  setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+
 /* ── التنقّل ──────────────────────────────────────────────────── */
+
+/* شريط الصدر ثابت — هويّة البرنامج وأرقامه الحيّة. عناوين الشاشات
+   تحته، فلا يتكرّر العنوان مرّتين في الصفحة الواحدة. */
 
 function show(view) {
   $$('.view').forEach(v => v.classList.toggle('is-active', v.dataset.view === view));
@@ -60,6 +77,29 @@ function show(view) {
 }
 
 $$('.nav-item').forEach(b => b.onclick = () => show(b.dataset.view));
+
+/* ── إحصاءات الصدر ───────────────────────────────────────────── */
+
+function renderHero() {
+  const c = {};
+  for (const j of S.jobs) c[j.status] = (c[j.status] || 0) + 1;
+  const rev = c['بانتظار المراجعة'] || 0;
+  const run = c['قيد المعالجة'] || 0;
+  const done = (c['مُدخَل'] || 0) + (c['مكرّر'] || 0);
+  const n = S.schema ? S.schema.groups.reduce((a, g) => a + g.fields.length, 0) : 155;
+
+  const bits = [
+    { n: S.totals, l: 'سجلّاً في الملف' },
+    { n, l: 'حقلاً لكل ملف' },
+  ];
+  if (run)  bits.push({ n: run,  l: 'قيد المعالجة' });
+  if (rev)  bits.push({ n: rev,  l: 'بانتظار المراجعة', c: 'c-warn' });
+  if (done) bits.push({ n: done, l: 'أُدخل اليوم', c: 'c-ok' });
+
+  $('#heroStats').innerHTML = bits
+    .map(b => `<div class="hstat ${b.c || ''}"><b>${b.n}</b><span>${b.l}</span></div>`)
+    .join('');
+}
 
 /* ── حالة الملفات ────────────────────────────────────────────── */
 
@@ -125,6 +165,7 @@ function renderQueue() {
   }
 
   renderCounters();
+  renderHero();
   const rev = S.jobs.filter(j => j.status === 'بانتظار المراجعة').length;
   $('[data-count="queue"]').textContent = S.jobs.length || '';
   $('[data-count="review"]').textContent = rev || '';
@@ -151,12 +192,12 @@ function renderCounters() {
   const c = {};
   for (const j of S.jobs) c[j.status] = (c[j.status] || 0) + 1;
   const order = [
-    ['بانتظار', ''], ['قيد المعالجة', ''], ['بانتظار المراجعة', 'is-warn'],
+    ['بانتظار', ''], ['قيد المعالجة', 'is-run'], ['بانتظار المراجعة', 'is-warn'],
     ['مُدخَل', 'is-ok'], ['مكرّر', ''], ['فشل', 'is-err'],
   ];
   $('#counters').innerHTML = order
     .filter(([k]) => c[k])
-    .map(([k, cls]) => `<div class="counter ${cls}"><b>${c[k]}</b>${k}</div>`)
+    .map(([k, cls]) => `<div class="counter ${cls}"><i></i><b>${c[k]}</b>${k}</div>`)
     .join('');
 }
 
@@ -227,12 +268,15 @@ function renderPick() {
   const box = $('#revPick');
   box.textContent = '';
   for (const j of list) {
+    const saved = j.status === 'مُدخَل' || j.status === 'مكرّر';
+    const tone = j.warnings ? 'w-warn' : saved ? 'w-saved' : 'w-clean';
     const b = document.createElement('button');
-    b.className = 'pick-card' + (S.review?.id === j.id ? ' is-on' : '');
-    b.innerHTML = '<b></b><span></span>';
-    b.querySelector('b').textContent = j.label || j.name;
-    b.querySelector('span').textContent =
-      j.warnings ? `${j.warnings} تنبيهاً` : (j.status === 'مُدخَل' ? 'مُدخَل ✓' : 'بلا تنبيهات');
+    b.className = `pick-card ${tone}` + (S.review?.id === j.id ? ' is-on' : '');
+    b.innerHTML = '<span class="pick-ic"></span><span class="pick-tx"><b></b><span></span></span>';
+    b.querySelector('.pick-ic').textContent = j.warnings ? j.warnings : saved ? '✓' : '٠';
+    b.querySelector('.pick-tx b').textContent = j.label || j.name;
+    b.querySelector('.pick-tx span').textContent =
+      j.warnings ? 'تنبيهاً يحتاج نظرك' : saved ? j.status : 'اجتاز الفحص';
     b.onclick = () => openReview(j.id);
     box.append(b);
   }
@@ -263,12 +307,12 @@ function renderFields() {
     const nFill  = g.fields.filter(f => f.state !== 'empty').length;
 
     const d = document.createElement('details');
-    d.className = 'grp';
+    d.className = `grp g-${g.key}`;
     d.open = g.active && (nWarn > 0 || nFill > 0);
 
     const sum = document.createElement('summary');
     sum.innerHTML = `
-      <span class="grp-icon">${g.icon || ''}</span>
+      <span class="grp-ic">${g.icon || ''}</span>
       <span>${g.title}</span>
       <span class="grp-meta">
         ${nWarn ? `<span class="pip pip-warn">${nWarn} مشكوك</span>` : ''}
@@ -354,7 +398,10 @@ function renderWarns() {
 
   if (!w.length) { box.hidden = true; return; }
   box.hidden = false;
-  box.innerHTML = '<h3>يحتاج نظرك</h3>';
+  box.innerHTML = `<h3>
+    <svg viewBox="0 0 20 20" style="width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round">
+      <path d="M10 3 2.5 16.5h15L10 3Zm0 5v4m0 2.6v.1"/></svg>
+    يحتاج نظرك</h3>`;
   for (const t of w) {
     const b = document.createElement('button');
     b.textContent = t;
@@ -436,11 +483,20 @@ $('#scanView').addEventListener('wheel', e => {
 
 /* ── السجلّات ────────────────────────────────────────────────── */
 
+/** الورقة ← مفتاح القسم، لتلوين البطاقة بلون قسمها. */
+const SHEET_KEY = {
+  'Operateur': 'operateur', 'Chauffeur': 'chauffeur',
+  'Véhicule': 'vehicule', 'Licence Modjahid': 'licence_modjahid',
+};
+
 async function loadStats() {
   try {
     const d = await api('/api/stats');
-    $('#stats').innerHTML = (d.sheets || []).map(s => `
-      <div class="stat">
+    const sheets = d.sheets || [];
+    S.totals = sheets.reduce((a, s) => a + s.count, 0);
+    renderHero();
+    $('#stats').innerHTML = sheets.map(s => `
+      <div class="stat s-${SHEET_KEY[s.sheet] || 'operateur'}">
         <span class="stat-ic">${s.icon || ''}</span>
         <div><div class="stat-n">${s.count}</div><div class="stat-l">${s.title}</div></div>
       </div>`).join('');
@@ -450,7 +506,7 @@ async function loadStats() {
 function renderSheetTabs() {
   $('#sheetTabs').innerHTML = S.schema.groups
     .filter(g => g.key !== 'chauffeur_manaoub')
-    .map(g => `<button class="sheet-tab${g.key === S.group ? ' is-on' : ''}" data-g="${g.key}">${g.title}</button>`)
+    .map(g => `<button class="sheet-tab t-${g.key}${g.key === S.group ? ' is-on' : ''}" data-g="${g.key}">${g.title}</button>`)
     .join('');
   $$('#sheetTabs .sheet-tab').forEach(b => b.onclick = () => {
     S.group = b.dataset.g; renderSheetTabs(); loadRecords();
@@ -663,6 +719,10 @@ async function refreshJobs() {
 /* ── الإقلاع ─────────────────────────────────────────────────── */
 
 (async function init() {
+  let saved = 'dark';
+  try { saved = localStorage.getItem('taxi-theme') || 'dark'; } catch {}
+  setTheme(saved === 'light' ? 'light' : 'dark');
+
   try {
     S.schema = await api('/api/schema');
     const st = await api('/api/state');
@@ -679,6 +739,7 @@ async function refreshJobs() {
   fillSettings();
   renderSheetTabs();
   renderQueue();
+  loadStats();          // لتملأ أرقام الصدر فوراً
   connect();
 
   const h = (location.hash || '').replace('#', '');
