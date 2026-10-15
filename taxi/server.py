@@ -59,6 +59,7 @@ class State:
         self.logs: dict[int, list] = {}
         self.pages: dict[int, list[bytes]] = {}
         self.ocr: dict[int, list[str]] = {}
+        self.tsv: dict[int, list[str]] = {}
         self.progress: dict[int, dict] = {}
         self.cancel: dict[int, threading.Event] = {}
         self._subs: list[queue.Queue] = []
@@ -177,6 +178,7 @@ class State:
         job.data = res.data
         job.warnings = res.warnings
         self.ocr[job.id] = res.ocr
+        self.tsv[job.id] = res.tsv
         try:
             self.pages[job.id] = pdf_to_jpegs(str(job.path), zoom=1.6)
         except Exception:
@@ -534,7 +536,10 @@ def api_diag(jid: int):
         "خانات فارغة متوقَّعة": empty,
         "المستخرَج": job.data,
         "الصفحات": [{"رقم": i + 1, "تصنيف": kinds[i] if i < len(kinds) else [],
-                     "حروف": len(t), "نصّ": t}
+                     "حروف": len(t), "نصّ": t,
+                     # الإحداثيات تلزم لقراءة البطاقة الرمادية بالمواقع
+                     "مواقع": (ST.tsv.get(jid) or [""] * len(ocr))[i]
+                              if i < len(ST.tsv.get(jid) or []) else ""}
                     for i, t in enumerate(ocr)],
     }
 

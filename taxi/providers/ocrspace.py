@@ -81,6 +81,7 @@ class OcrSpaceProvider:
         self.key = (key or "").strip()
         self.model = model or OCRSPACE_MODELS[0]
         self.last_pages: list[str] = []
+        self.last_tsv: list[str] = []
 
     def _engine(self) -> int:
         return 3 if str(self.model).endswith("3") else 2
@@ -154,5 +155,6 @@ class OcrSpaceProvider:
         # القيمة، أم أنها قُرئت والمستخرج لم يلتقطها؟ والفرق بينهما
         # هو الفرق بين إصلاحٍ في محلّه وتخمينٍ في الهواء.
         self.last_pages = texts
+        self.last_tsv = tsvs
         return json.dumps(extract_taxi("\f".join(texts), WILAYA_ID, tsv="\f".join(tsvs)),
                           ensure_ascii=False)

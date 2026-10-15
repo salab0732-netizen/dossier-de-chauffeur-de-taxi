@@ -38,6 +38,7 @@ class Result:
     pages: int = 0
     # نصّ OCR لكل صفحة — يُعرَض في المراجعة ليُرى سببُ كل خانة فارغة
     ocr: list[str] = field(default_factory=list)
+    tsv: list[str] = field(default_factory=list)
 
     @property
     def clean(self) -> bool:
@@ -89,6 +90,7 @@ def run(pdf_path: str, provider, excel_path: str = "", *,
     raw = provider.extract(images, build_prompt())
     res.data = raw if isinstance(raw, dict) else parse_json_response(raw)
     res.ocr = list(getattr(provider, "last_pages", []) or [])
+    res.tsv = list(getattr(provider, "last_tsv", []) or [])
     say("استُخرجت البيانات.", "ok")
 
     # ── 3-4. تطبيع واستنتاج ──

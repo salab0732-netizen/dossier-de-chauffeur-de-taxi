@@ -406,6 +406,59 @@ _LABEL_WORDS = set(_CG_LABELS) | {"GENRE", "DANS", "LA", "DU", "N", "TOTAL", "EN
                                   "PRECEDENT", "DIMMATRICULATION", "IMMATRICULATION"}
 
 
+# كلماتٌ ترد في البطاقة الرمادية وفي ذيل المسح، وليست عناوين خانات
+_CG_NOT_LABEL = {
+    "SCANNE", "SCANNED", "CAMSCANNER", "QUITTANCE", "ADRESSE", "COMMUNE",
+    "WILAYA", "PROFESSION", "DATE", "CIRCULATION", "REPUBLIQUE",
+    "ALGERIENNE", "DEMOCRATIQUE", "POPULAIRE", "AVEC", "NOM", "PRENOM",
+}
+
+
+def _cg_label(word: str) -> str | None:
+    """عنوانُ خانةٍ في البطاقة الرمادية، ولو شوّهه المسح.
+
+    العناوين مطبوعةٌ بخطٍّ صغير تحت القيم، وهي أوّل ما يُفسده المسح.
+    شواهد من ملفّات حقيقية:
+        ASSISES → ASSMES   ·  CARROSSERIE → CAGROSSERIE
+        GENRE   → GENE     ·  SERIE       → ERIE
+        ANNEE   → ANKE
+    والمطابقةُ حرفاً بحرف تُسقط كل خانةٍ شُوّه عنوانها — وهي كانت
+    سببَ فراغ النوع والهيكل والطاقة وعدد المقاعد والرقم التسلسلي
+    معاً، بينما نجح الصنف ورقم التسجيل لأنهما يُقرآن بالأنماط لا
+    بالمواقع.
+
+    فتُقبل المطابقة التقريبية، على أن يكون العنوان المرشَّح أقربَ
+    إلى عنوانٍ واحد دون غيره — فإن تساوى اثنان تُركت الخانة، إذ
+    نسبةُ قيمةٍ إلى خانةٍ خطأً أسوأ من تركها فارغة.
+    """
+    U = (word or "").upper()
+    if U in _CG_LABELS:
+        return U
+    if len(U) < 4 or U in _CG_NOT_LABEL:
+        return None
+
+    best, second, hit = 0.0, 0.0, None
+    for cand in _CG_LABELS:
+        # المسح يُفسد وسطَ الكلمة وآخرَها، ويبتلع حرفها الأوّل أحياناً.
+        # فيُشترَط إمّا اتّفاق الحرفَين الأوّلَين (ANKE↔ANNEE)، وإمّا أن
+        # يكون أحدهما داخل الآخر (ERIE داخل SERIE). وبهذا يُرفَض
+        # SCANNE↔ANNEE — وهي كلمة ترد في ذيل كل صفحة ممسوحة، فلولا
+        # هذا الشرط لنُسبت قيمةٌ إلى «سنة أول استعمال» في كل ملف.
+        if not (U[:2] == cand[:2] or U in cand or cand in U):
+            continue
+        r = _difflib.SequenceMatcher(None, U, cand).ratio()
+        if r > best:
+            best, second, hit = r, best, cand
+        elif r > second:
+            second = r
+
+    # 0.66 يقبل ANKE↔ANNEE (0.67) وASSMES↔ASSISES (0.77)،
+    # وفارقُ 0.08 يمنع الالتباس بين عنوانَين متقاربَين.
+    if best >= 0.66 and (best - second) >= 0.08:
+        return hit
+    return None
+
+
 def _cg_cells(tsv: str) -> dict:
     """قراءة جدول البطاقة الرمادية بالمواقع: لكل عنوان مطبوع (MARQUE، PUISSANCE…)
     نأخذ الكلمات التي فوقه مباشرة في عموده. كل كلمة تُنسب إلى أقرب عنوان في
@@ -413,6 +466,12 @@ def _cg_cells(tsv: str) -> dict:
     ws = _tsv_words(tsv)
     if not ws:
         return {}
+
+    # عنوانٌ شوّهه المسح يُردّ إلى أصله قبل أي مطابقة بعده
+    for w in ws:
+        fixed = _cg_label(w["U"])
+        if fixed and fixed != w["U"]:
+            w["U"] = fixed
 
     # ① مراسي العناوين: (الحقل، الحدّ الأيسر، الأيمن، الأعلى، الارتفاع)
     anchors = []
